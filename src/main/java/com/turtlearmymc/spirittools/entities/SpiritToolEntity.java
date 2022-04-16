@@ -12,6 +12,7 @@ import net.minecraft.nbt.NbtCompound;
 import net.minecraft.network.Packet;
 import net.minecraft.server.world.ServerWorld;
 import net.minecraft.tag.BlockTags;
+import net.minecraft.tag.FluidTags;
 import net.minecraft.tag.TagKey;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.MathHelper;
@@ -24,12 +25,11 @@ import java.util.UUID;
 
 public abstract class SpiritToolEntity extends Entity {
 	protected static final int DESPAWN_AGE = 200;
-	protected static final int MINING_TICKS = 20;
 	protected static final double SEARCH_BLOCK_RANGE = 5;
+	protected static final float MINING_SPEED = 8.0f;
 
 	protected final TagKey<Block> effectiveBlocks;
 	protected final ToolMaterial material;
-
 	protected int toolAge;
 	protected LivingEntity owner;
 	protected UUID ownerUuid;
@@ -38,6 +38,7 @@ public abstract class SpiritToolEntity extends Entity {
 	protected Block mineMaterial;
 	protected int miningTicks;
 	protected BlockPos miningAt;
+	protected int prevBreakStage;
 
 	public SpiritToolEntity(
 			EntityType<?> type, World world, TagKey<Block> effectiveBlocks, ToolMaterial material
@@ -55,9 +56,7 @@ public abstract class SpiritToolEntity extends Entity {
 	}
 
 	public void scheduleToMine(BlockPos searchFrom) {
-		if (world.isClient) {
-			System.out.println("OH NO");
-		} else {
+		if (!world.isClient) {
 			BlockState state = world.getBlockState(searchFrom);
 			if (isSuitableFor(state)) {
 				mineMaterial = state.getBlock();
@@ -111,21 +110,55 @@ public abstract class SpiritToolEntity extends Entity {
 			owner = (LivingEntity) ((ServerWorld) world).getEntity(ownerUuid);
 		}
 		if (++toolAge >= DESPAWN_AGE) {
-			discard();
+			despawn();
+			return;
 		}
 		if (mineMaterial == null) return;
 		if (miningAt == null) {
 			if (!findNextMiningBlock()) {
-				discard();
+				despawn();
 				return;
 			}
 			lookAt(miningAt);
 		}
-		if (++miningTicks >= MINING_TICKS) {
+		++miningTicks;
+		BlockState stateAt = world.getBlockState(miningAt);
+		float breakProgress = calcBlockBreakingDelta(stateAt) * (miningTicks + 1f);
+		int breakStage = (int) (breakProgress * 10f);
+		if (breakProgress >= 1) {
+			world.setBlockBreakingInfo(getId(), miningAt, -1);
 			world.breakBlock(miningAt, true);
 			miningAt = null;
 			miningTicks = 0;
+			prevBreakStage = 0;
+		} else if (breakStage != prevBreakStage) {
+			world.setBlockBreakingInfo(getId(), miningAt, breakStage);
+			prevBreakStage = breakStage;
 		}
+	}
+
+	protected float calcBlockBreakingDelta(BlockState stateAt) {
+		float hardness = stateAt.getHardness(world, miningAt);
+		if (hardness == -1.0f) {
+			return 0.0f;
+		}
+		return getBlockBreakingSpeed() / hardness / 30;
+	}
+
+	protected float getBlockBreakingSpeed() {
+		float speed = MINING_SPEED;
+
+		if (isSubmergedIn(FluidTags.WATER)) speed /= 5f;
+
+		return speed;
+	}
+
+	protected void despawn() {
+		if (miningAt != null) {
+			// Clear block breaking progress when despawning
+			world.setBlockBreakingInfo(getId(), miningAt, -1);
+		}
+		discard();
 	}
 
 	/**

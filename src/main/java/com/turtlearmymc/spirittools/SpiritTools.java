@@ -2,9 +2,7 @@ package com.turtlearmymc.spirittools;
 
 import com.turtlearmymc.spirittools.entities.SpiritPickaxeEntity;
 import com.turtlearmymc.spirittools.items.SpiritPickaxeItem;
-import com.turtlearmymc.spirittools.network.S2CSummonSpiritToolPacket;
 import net.fabricmc.api.ModInitializer;
-import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
 import net.fabricmc.fabric.api.object.builder.v1.entity.FabricEntityTypeBuilder;
 import net.minecraft.entity.EntityDimensions;
 import net.minecraft.entity.EntityType;
@@ -38,7 +36,5 @@ public class SpiritTools implements ModInitializer {
 		log(Level.INFO, "Initializing");
 
 		Registry.register(Registry.ITEM, new Identifier(MOD_ID, SpiritPickaxeItem.ITEM_ID), SPIRIT_PICKAXE_ITEM);
-
-		ClientPlayNetworking.registerGlobalReceiver(S2CSummonSpiritToolPacket.ID, S2CSummonSpiritToolPacket::onPacket);
 	}
 }
