@@ -50,9 +50,17 @@ public abstract class SpiritToolEntity extends Entity {
 		scheduledMiningPositions = new HashSet<>();
 	}
 
+	public LivingEntity getOwner() {
+		return owner;
+	}
+
 	public void setOwner(LivingEntity owner) {
 		this.owner = owner;
 		ownerUuid = owner != null ? owner.getUuid() : null;
+	}
+
+	public UUID getOwnerUUID() {
+		return ownerUuid;
 	}
 
 	public void scheduleToMine(BlockPos searchFrom) {
