@@ -1,5 +1,6 @@
 package com.turtlearmymc.spirittools.entities;
 
+import com.turtlearmymc.spirittools.items.SpiritToolItem;
 import com.turtlearmymc.spirittools.network.S2CSummonSpiritToolPacket;
 import net.fabricmc.yarn.constants.MiningLevels;
 import net.minecraft.block.Block;
@@ -7,6 +8,8 @@ import net.minecraft.block.BlockState;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.EntityType;
 import net.minecraft.entity.LivingEntity;
+import net.minecraft.entity.player.PlayerEntity;
+import net.minecraft.item.ItemStack;
 import net.minecraft.item.ToolMaterial;
 import net.minecraft.nbt.NbtCompound;
 import net.minecraft.network.Packet;
@@ -24,12 +27,10 @@ import java.util.Optional;
 import java.util.UUID;
 
 public abstract class SpiritToolEntity extends Entity {
+	public static final int SUMMON_RANGE = 20;
 	protected static final int DESPAWN_AGE = 200;
 	protected static final double SEARCH_BLOCK_RANGE = 5;
-	protected static final float MINING_SPEED = 8.0f;
 
-	protected final TagKey<Block> effectiveBlocks;
-	protected final ToolMaterial material;
 	protected int toolAge;
 	protected LivingEntity owner;
 	protected UUID ownerUuid;
@@ -40,15 +41,16 @@ public abstract class SpiritToolEntity extends Entity {
 	protected BlockPos miningAt;
 	protected int prevBreakStage;
 
-	public SpiritToolEntity(
-			EntityType<?> type, World world, TagKey<Block> effectiveBlocks, ToolMaterial material
-	) {
+	public SpiritToolEntity(EntityType<?> type, World world) {
 		super(type, world);
-
-		this.effectiveBlocks = effectiveBlocks;
-		this.material = material;
 		scheduledMiningPositions = new HashSet<>();
 	}
+
+	protected abstract TagKey<Block> getEffectiveBlocks();
+
+	protected abstract ToolMaterial getMaterial();
+
+	protected abstract SpiritToolItem getItem();
 
 	public LivingEntity getOwner() {
 		return owner;
@@ -87,7 +89,7 @@ public abstract class SpiritToolEntity extends Entity {
 	}
 
 	public boolean isSuitableFor(BlockState state) {
-		int i = material.getMiningLevel();
+		int i = getMaterial().getMiningLevel();
 		if (i < MiningLevels.DIAMOND && state.isIn(BlockTags.NEEDS_DIAMOND_TOOL)) {
 			return false;
 		}
@@ -97,34 +99,42 @@ public abstract class SpiritToolEntity extends Entity {
 		if (i < MiningLevels.STONE && state.isIn(BlockTags.NEEDS_STONE_TOOL)) {
 			return false;
 		}
-		return state.isIn(effectiveBlocks);
+		return state.isIn(getEffectiveBlocks());
 	}
 
 	@Override
 	public void tick() {
-		super.tick();
 		if (world.isClient()) {
 			clientTick();
 		} else {
 			serverTick();
 		}
+		super.tick();
 	}
 
 	protected void clientTick() {
 	}
 
 	protected void serverTick() {
-		if (ownerUuid != null && world instanceof ServerWorld) {
-			owner = (LivingEntity) ((ServerWorld) world).getEntity(ownerUuid);
+		if (ownerUuid == null) {
+			discard();
+			return;
 		}
-		if (++toolAge >= DESPAWN_AGE) {
-			despawn();
+		if (world instanceof ServerWorld) {
+			owner = (LivingEntity) ((ServerWorld) world).getEntity(ownerUuid);
+			if (owner == null) {
+				discard();
+				return;
+			}
+		}
+		if (++toolAge >= DESPAWN_AGE || !holderWithinRange()) {
+			discard();
 			return;
 		}
 		if (mineMaterial == null) return;
 		if (miningAt == null) {
 			if (!findNextMiningBlock()) {
-				despawn();
+				discard();
 				return;
 			}
 			lookAt(miningAt);
@@ -145,6 +155,14 @@ public abstract class SpiritToolEntity extends Entity {
 		}
 	}
 
+	protected boolean holderWithinRange() {
+		if (owner == null || squaredDistanceTo(owner) >= SUMMON_RANGE * SUMMON_RANGE) return false;
+		if (owner instanceof PlayerEntity player) {
+			return player.getInventory().contains(new ItemStack(getItem()));
+		}
+		return false;
+	}
+
 	protected float calcBlockBreakingDelta(BlockState stateAt) {
 		float hardness = stateAt.getHardness(world, miningAt);
 		if (hardness == -1.0f) {
@@ -154,19 +172,20 @@ public abstract class SpiritToolEntity extends Entity {
 	}
 
 	protected float getBlockBreakingSpeed() {
-		float speed = MINING_SPEED;
+		float speed = getMaterial().getMiningSpeedMultiplier();
 
 		if (isSubmergedIn(FluidTags.WATER)) speed /= 5f;
 
 		return speed;
 	}
 
-	protected void despawn() {
+	@Override
+	public void remove(RemovalReason removalReason) {
 		if (miningAt != null) {
 			// Clear block breaking progress when despawning
 			world.setBlockBreakingInfo(getId(), miningAt, -1);
 		}
-		discard();
+		super.remove(removalReason);
 	}
 
 	/**

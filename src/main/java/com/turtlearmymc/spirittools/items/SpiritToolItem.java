@@ -13,13 +13,12 @@ import net.minecraft.util.math.Direction;
 import net.minecraft.util.math.Vec3d;
 import net.minecraft.world.World;
 
-public class SpiritToolItem extends Item {
-	protected final EntityType<? extends SpiritToolEntity> toolEntityType;
-
-	public SpiritToolItem(EntityType<? extends SpiritToolEntity> toolEntityType, Settings settings) {
+public abstract class SpiritToolItem extends Item {
+	public SpiritToolItem(Settings settings) {
 		super(settings);
-		this.toolEntityType = toolEntityType;
 	}
+
+	protected abstract EntityType<? extends SpiritToolEntity> getToolEntityType();
 
 	@Override
 	public ActionResult useOnBlock(ItemUsageContext context) {
@@ -29,7 +28,7 @@ public class SpiritToolItem extends Item {
 		}
 		BlockPos blockPos = context.getBlockPos();
 		BlockState blockState = world.getBlockState(blockPos);
-		SpiritToolEntity toolEntity = toolEntityType.create(world);
+		SpiritToolEntity toolEntity = getToolEntityType().create(world);
 
 		if (!toolEntity.isSuitableFor(blockState)) return ActionResult.SUCCESS;
 

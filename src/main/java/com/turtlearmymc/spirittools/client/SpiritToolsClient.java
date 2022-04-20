@@ -2,6 +2,7 @@ package com.turtlearmymc.spirittools.client;
 
 import com.turtlearmymc.spirittools.SpiritTools;
 import com.turtlearmymc.spirittools.client.render.SpiritToolRenderer;
+import com.turtlearmymc.spirittools.entities.SpiritPickaxeEntity;
 import com.turtlearmymc.spirittools.network.S2CSummonSpiritToolPacket;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.api.EnvType;
@@ -33,8 +34,9 @@ public class SpiritToolsClient implements ClientModInitializer {
 						}
 					}
 
+					double expandBy = Math.sqrt(Math.pow(SpiritPickaxeEntity.SUMMON_RANGE, 2) * 2);
 					return clientWorld.getEntitiesByType(SpiritTools.SPIRIT_PICKAXE_ENTITY,
-							holder.getBoundingBox().expand(20),
+							holder.getBoundingBox().expand(expandBy),
 							(spiritPickaxe) -> holder.equals(spiritPickaxe.getOwner())
 					).isEmpty() ? 0 : 1;
 				});
