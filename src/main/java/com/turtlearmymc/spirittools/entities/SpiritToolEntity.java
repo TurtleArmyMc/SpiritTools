@@ -2,7 +2,6 @@ package com.turtlearmymc.spirittools.entities;
 
 import com.turtlearmymc.spirittools.items.SpiritToolItem;
 import com.turtlearmymc.spirittools.network.S2CSummonSpiritToolPacket;
-import net.fabricmc.yarn.constants.MiningLevels;
 import net.minecraft.block.Block;
 import net.minecraft.block.BlockState;
 import net.minecraft.entity.Entity;
@@ -14,28 +13,25 @@ import net.minecraft.item.ToolMaterial;
 import net.minecraft.nbt.NbtCompound;
 import net.minecraft.network.Packet;
 import net.minecraft.server.world.ServerWorld;
-import net.minecraft.tag.BlockTags;
 import net.minecraft.tag.FluidTags;
-import net.minecraft.tag.TagKey;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.MathHelper;
 import net.minecraft.util.math.Vec3d;
 import net.minecraft.world.World;
 
-import java.util.HashSet;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 
 public abstract class SpiritToolEntity extends Entity {
 	public static final int SUMMON_RANGE = 20;
 	protected static final int DESPAWN_AGE = 200;
-	protected static final double SEARCH_BLOCK_RANGE = 5;
 
 	protected int toolAge;
 	protected LivingEntity owner;
 	protected UUID ownerUuid;
 
-	protected HashSet<BlockPos> scheduledMiningPositions;
+	protected Set<BlockPos> scheduledMiningPositions;
 	protected Block mineMaterial;
 	protected int miningTicks;
 	protected BlockPos miningAt;
@@ -43,10 +39,7 @@ public abstract class SpiritToolEntity extends Entity {
 
 	public SpiritToolEntity(EntityType<?> type, World world) {
 		super(type, world);
-		scheduledMiningPositions = new HashSet<>();
 	}
-
-	protected abstract TagKey<Block> getEffectiveBlocks();
 
 	protected abstract ToolMaterial getMaterial();
 
@@ -65,41 +58,9 @@ public abstract class SpiritToolEntity extends Entity {
 		return ownerUuid;
 	}
 
-	public void scheduleToMine(BlockPos searchFrom) {
-		if (!world.isClient) {
-			BlockState state = world.getBlockState(searchFrom);
-			if (isSuitableFor(state)) {
-				mineMaterial = state.getBlock();
-				scheduleToMine(searchFrom, searchFrom);
-			}
-		}
-	}
-
-	protected void scheduleToMine(BlockPos center, BlockPos pos) {
-		if (scheduledMiningPositions.contains(pos)) return;
-		if (!center.isWithinDistance(pos, SEARCH_BLOCK_RANGE)) return;
-		if (!world.getBlockState(pos).getBlock().equals(mineMaterial)) return;
-		scheduledMiningPositions.add(pos);
-		scheduleToMine(center, pos.up());
-		scheduleToMine(center, pos.down());
-		scheduleToMine(center, pos.north());
-		scheduleToMine(center, pos.south());
-		scheduleToMine(center, pos.east());
-		scheduleToMine(center, pos.west());
-	}
-
-	public boolean isSuitableFor(BlockState state) {
-		int i = getMaterial().getMiningLevel();
-		if (i < MiningLevels.DIAMOND && state.isIn(BlockTags.NEEDS_DIAMOND_TOOL)) {
-			return false;
-		}
-		if (i < MiningLevels.IRON && state.isIn(BlockTags.NEEDS_IRON_TOOL)) {
-			return false;
-		}
-		if (i < MiningLevels.STONE && state.isIn(BlockTags.NEEDS_STONE_TOOL)) {
-			return false;
-		}
-		return state.isIn(getEffectiveBlocks());
+	public void scheduleToMine(Block mineMaterial, Set<BlockPos> miningPositions) {
+		this.mineMaterial = mineMaterial;
+		scheduledMiningPositions = miningPositions;
 	}
 
 	@Override

@@ -2,12 +2,9 @@ package com.turtlearmymc.spirittools.entities;
 
 import com.turtlearmymc.spirittools.SpiritTools;
 import com.turtlearmymc.spirittools.items.SpiritToolItem;
-import net.minecraft.block.Block;
 import net.minecraft.entity.EntityType;
 import net.minecraft.item.ToolMaterial;
 import net.minecraft.item.ToolMaterials;
-import net.minecraft.tag.BlockTags;
-import net.minecraft.tag.TagKey;
 import net.minecraft.world.World;
 
 public class SpiritPickaxeEntity extends SpiritToolEntity {
@@ -15,11 +12,6 @@ public class SpiritPickaxeEntity extends SpiritToolEntity {
 
 	public SpiritPickaxeEntity(EntityType<? extends SpiritToolEntity> type, World world) {
 		super(type, world);
-	}
-
-	@Override
-	protected TagKey<Block> getEffectiveBlocks() {
-		return BlockTags.PICKAXE_MINEABLE;
 	}
 
 	@Override
