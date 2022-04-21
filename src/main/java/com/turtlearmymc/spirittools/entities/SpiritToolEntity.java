@@ -4,6 +4,7 @@ import com.turtlearmymc.spirittools.items.SpiritToolItem;
 import com.turtlearmymc.spirittools.network.S2CSummonSpiritToolPacket;
 import net.minecraft.block.Block;
 import net.minecraft.block.BlockState;
+import net.minecraft.block.entity.BlockEntity;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.EntityType;
 import net.minecraft.entity.LivingEntity;
@@ -11,25 +12,32 @@ import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.item.ItemStack;
 import net.minecraft.item.ToolMaterial;
 import net.minecraft.nbt.NbtCompound;
+import net.minecraft.nbt.NbtElement;
+import net.minecraft.nbt.NbtHelper;
+import net.minecraft.nbt.NbtList;
 import net.minecraft.network.Packet;
 import net.minecraft.server.world.ServerWorld;
 import net.minecraft.tag.FluidTags;
+import net.minecraft.util.Identifier;
+import net.minecraft.util.ItemScatterer;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.MathHelper;
 import net.minecraft.util.math.Vec3d;
+import net.minecraft.util.registry.Registry;
 import net.minecraft.world.World;
 
-import java.util.Optional;
-import java.util.Set;
-import java.util.UUID;
+import java.util.*;
 
 public abstract class SpiritToolEntity extends Entity {
 	public static final int SUMMON_RANGE = 20;
 	protected static final int DESPAWN_AGE = 200;
+	protected static final int MAX_TICKS_OUTSIDE_RANGE = 20;
 
 	protected int toolAge;
-	protected LivingEntity owner;
+	protected Entity owner;
 	protected UUID ownerUuid;
+
+	protected List<ItemStack> inventory;
 
 	protected Set<BlockPos> scheduledMiningPositions;
 	protected Block mineMaterial;
@@ -37,16 +45,27 @@ public abstract class SpiritToolEntity extends Entity {
 	protected BlockPos miningAt;
 	protected int prevBreakStage;
 
+	protected int ticksOutsideRange;
+
 	public SpiritToolEntity(EntityType<?> type, World world) {
 		super(type, world);
+		inventory = new ArrayList<>();
+		scheduledMiningPositions = new HashSet<>();
 	}
 
 	protected abstract ToolMaterial getMaterial();
 
 	protected abstract SpiritToolItem getItem();
 
-	public LivingEntity getOwner() {
-		return owner;
+	public Entity getOwner() {
+		if (owner != null && !owner.isRemoved()) {
+			return owner;
+		}
+		if (ownerUuid != null && world instanceof ServerWorld serverWorld) {
+			owner = serverWorld.getEntity(ownerUuid);
+			return owner;
+		}
+		return null;
 	}
 
 	public void setOwner(LivingEntity owner) {
@@ -60,7 +79,7 @@ public abstract class SpiritToolEntity extends Entity {
 
 	public void scheduleToMine(Block mineMaterial, Set<BlockPos> miningPositions) {
 		this.mineMaterial = mineMaterial;
-		scheduledMiningPositions = miningPositions;
+		scheduledMiningPositions.addAll(miningPositions);
 	}
 
 	@Override
@@ -77,25 +96,24 @@ public abstract class SpiritToolEntity extends Entity {
 	}
 
 	protected void serverTick() {
-		if (ownerUuid == null) {
-			discard();
+		if (++toolAge >= DESPAWN_AGE) {
+			returnToOwner();
 			return;
 		}
-		if (world instanceof ServerWorld) {
-			owner = (LivingEntity) ((ServerWorld) world).getEntity(ownerUuid);
-			if (owner == null) {
-				discard();
-				return;
-			}
-		}
-		if (++toolAge >= DESPAWN_AGE || !holderWithinRange()) {
-			discard();
+
+		// If the entity has not been fully deserialized yet including the ownerUuid, do nothing
+		if (ownerUuid == null) return;
+
+		ticksOutsideRange = ownerWithinRange() ? 0 : ticksOutsideRange + 1;
+		if (ticksOutsideRange >= MAX_TICKS_OUTSIDE_RANGE) {
+			returnToOwner();
 			return;
 		}
+
 		if (mineMaterial == null) return;
 		if (miningAt == null) {
 			if (!findNextMiningBlock()) {
-				discard();
+				returnToOwner();
 				return;
 			}
 			lookAt(miningAt);
@@ -105,20 +123,42 @@ public abstract class SpiritToolEntity extends Entity {
 		float breakProgress = calcBlockBreakingDelta(stateAt) * (miningTicks + 1f);
 		int breakStage = (int) (breakProgress * 10f);
 		if (breakProgress >= 1) {
-			world.setBlockBreakingInfo(getId(), miningAt, -1);
-			world.breakBlock(miningAt, true);
-			miningAt = null;
-			miningTicks = 0;
-			prevBreakStage = 0;
+			finishBreakingBlock(stateAt);
 		} else if (breakStage != prevBreakStage) {
 			world.setBlockBreakingInfo(getId(), miningAt, breakStage);
 			prevBreakStage = breakStage;
 		}
 	}
 
-	protected boolean holderWithinRange() {
-		if (owner == null || squaredDistanceTo(owner) >= SUMMON_RANGE * SUMMON_RANGE) return false;
-		if (owner instanceof PlayerEntity player) {
+	protected void finishBreakingBlock(BlockState state) {
+		addDropsToInventory(miningAt, state);
+		state.onStacksDropped((ServerWorld) world, miningAt, new ItemStack(getItem()));
+
+		world.setBlockBreakingInfo(getId(), miningAt, -1);
+		world.breakBlock(miningAt, false, this);
+
+		miningAt = null;
+		miningTicks = 0;
+		prevBreakStage = 0;
+	}
+
+	protected void returnToOwner() {
+		if (!giveItemsToOwner()) dropItems();
+		discard();
+	}
+
+	protected void addDropsToInventory(BlockPos pos, BlockState state) {
+		inventory.addAll(getDropStacks(pos, state));
+	}
+
+	protected List<ItemStack> getDropStacks(BlockPos pos, BlockState state) {
+		BlockEntity blockEntity = state.hasBlockEntity() ? world.getBlockEntity(pos) : null;
+		return Block.getDroppedStacks(state, (ServerWorld) world, miningAt, blockEntity);
+	}
+
+	protected boolean ownerWithinRange() {
+		if (getOwner() == null || squaredDistanceTo(getOwner()) >= SUMMON_RANGE * SUMMON_RANGE) return false;
+		if (getOwner() instanceof PlayerEntity player) {
 			return player.getInventory().contains(new ItemStack(getItem()));
 		}
 		return false;
@@ -138,6 +178,22 @@ public abstract class SpiritToolEntity extends Entity {
 		if (isSubmergedIn(FluidTags.WATER)) speed /= 5f;
 
 		return speed;
+	}
+
+	/**
+	 * @return whether items were successfully inserted/dropped
+	 */
+	protected boolean giveItemsToOwner() {
+		if (getOwner() instanceof PlayerEntity player) {
+			inventory.forEach(player.getInventory()::offerOrDrop);
+			inventory.clear();
+			return true;
+		}
+		return false;
+	}
+
+	protected void dropItems() {
+		inventory.forEach(stack -> ItemScatterer.spawn(world, getX(), getY(), getZ(), stack));
 	}
 
 	@Override
@@ -163,19 +219,43 @@ public abstract class SpiritToolEntity extends Entity {
 
 	@Override
 	protected void initDataTracker() {
-
 	}
 
 	@Override
 	protected void readCustomDataFromNbt(NbtCompound nbt) {
 		if (nbt.containsUuid("owner")) ownerUuid = nbt.getUuid("owner");
 		if (nbt.contains("toolAge")) toolAge = nbt.getInt("toolAge");
+
+		if (nbt.contains("inventory")) inventory.addAll(
+				nbt.getList("inventory", NbtCompound.COMPOUND_TYPE).stream().map(NbtCompound.class::cast)
+						.map(ItemStack::fromNbt).toList());
+
+		if (nbt.contains("miningPositions")) scheduledMiningPositions.addAll(
+				nbt.getList("miningPositions", NbtElement.COMPOUND_TYPE).stream().map(NbtCompound.class::cast)
+						.map(NbtHelper::toBlockPos).toList());
+
+		if (nbt.contains("miningMaterial"))
+			mineMaterial = Registry.BLOCK.get(new Identifier(nbt.getString("miningMaterial")));
+		if (nbt.contains("miningProgress")) miningTicks = nbt.getInt("miningProgress");
+		if (nbt.contains("miningAt")) miningAt = NbtHelper.toBlockPos(nbt.getCompound("miningAt"));
 	}
 
 	@Override
 	protected void writeCustomDataToNbt(NbtCompound nbt) {
 		nbt.putUuid("owner", ownerUuid);
 		nbt.putInt("toolAge", toolAge);
+
+		NbtList inventoryNbt = new NbtList();
+		inventoryNbt.addAll(inventory.stream().map(stack -> stack.writeNbt(new NbtCompound())).toList());
+		nbt.put("inventory", inventoryNbt);
+
+		NbtList miningPositionsNbt = new NbtList();
+		miningPositionsNbt.addAll(scheduledMiningPositions.stream().map(NbtHelper::fromBlockPos).toList());
+		nbt.put("miningPositions", miningPositionsNbt);
+
+		nbt.putString("miningMaterial", Registry.BLOCK.getId(mineMaterial).toString());
+		nbt.putInt("miningProgress", miningTicks);
+		if (miningAt != null) nbt.put("miningAt", NbtHelper.fromBlockPos(miningAt));
 	}
 
 	@Override
