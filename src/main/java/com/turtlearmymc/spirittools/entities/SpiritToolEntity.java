@@ -7,6 +7,7 @@ import net.minecraft.block.BlockState;
 import net.minecraft.block.entity.BlockEntity;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.EntityType;
+import net.minecraft.entity.ExperienceOrbEntity;
 import net.minecraft.entity.LivingEntity;
 import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.item.ItemStack;
@@ -21,6 +22,7 @@ import net.minecraft.tag.FluidTags;
 import net.minecraft.util.Identifier;
 import net.minecraft.util.ItemScatterer;
 import net.minecraft.util.math.BlockPos;
+import net.minecraft.util.math.Box;
 import net.minecraft.util.math.MathHelper;
 import net.minecraft.util.math.Vec3d;
 import net.minecraft.util.registry.Registry;
@@ -38,6 +40,7 @@ public abstract class SpiritToolEntity extends Entity {
 	protected UUID ownerUuid;
 
 	protected List<ItemStack> inventory;
+	protected int xpAmount;
 
 	protected Set<BlockPos> scheduledMiningPositions;
 	protected Block mineMaterial;
@@ -133,6 +136,7 @@ public abstract class SpiritToolEntity extends Entity {
 	protected void finishBreakingBlock(BlockState state) {
 		addDropsToInventory(miningAt, state);
 		state.onStacksDropped((ServerWorld) world, miningAt, new ItemStack(getItem()));
+		collectXp(miningAt);
 
 		world.setBlockBreakingInfo(getId(), miningAt, -1);
 		world.breakBlock(miningAt, false, this);
@@ -142,8 +146,16 @@ public abstract class SpiritToolEntity extends Entity {
 		prevBreakStage = 0;
 	}
 
+	protected void collectXp(BlockPos pos) {
+		world.getEntitiesByType(EntityType.EXPERIENCE_ORB, new Box(pos), orb -> orb.age == 0).forEach(orb -> {
+			xpAmount += orb.getExperienceAmount();
+			orb.discard();
+		});
+	}
+
 	protected void returnToOwner() {
 		if (!giveItemsToOwner()) dropItems();
+		if (!giveXpToOwner()) dropXp();
 		discard();
 	}
 
@@ -194,6 +206,23 @@ public abstract class SpiritToolEntity extends Entity {
 
 	protected void dropItems() {
 		inventory.forEach(stack -> ItemScatterer.spawn(world, getX(), getY(), getZ(), stack));
+		inventory.clear();
+	}
+
+	/**
+	 * @return whether xp was successfully given
+	 */
+	protected boolean giveXpToOwner() {
+		if (getOwner() instanceof PlayerEntity player) {
+			player.addExperience(xpAmount);
+			xpAmount = 0;
+			return true;
+		}
+		return false;
+	}
+
+	protected void dropXp() {
+		ExperienceOrbEntity.spawn((ServerWorld) world, getPos(), xpAmount);
 	}
 
 	@Override
@@ -230,6 +259,8 @@ public abstract class SpiritToolEntity extends Entity {
 				nbt.getList("inventory", NbtCompound.COMPOUND_TYPE).stream().map(NbtCompound.class::cast)
 						.map(ItemStack::fromNbt).toList());
 
+		if (nbt.contains("xpAmount")) xpAmount = nbt.getInt("xpAmount");
+
 		if (nbt.contains("miningPositions")) scheduledMiningPositions.addAll(
 				nbt.getList("miningPositions", NbtElement.COMPOUND_TYPE).stream().map(NbtCompound.class::cast)
 						.map(NbtHelper::toBlockPos).toList());
@@ -248,6 +279,8 @@ public abstract class SpiritToolEntity extends Entity {
 		NbtList inventoryNbt = new NbtList();
 		inventoryNbt.addAll(inventory.stream().map(stack -> stack.writeNbt(new NbtCompound())).toList());
 		nbt.put("inventory", inventoryNbt);
+
+		nbt.putInt("xpAmount", xpAmount);
 
 		NbtList miningPositionsNbt = new NbtList();
 		miningPositionsNbt.addAll(scheduledMiningPositions.stream().map(NbtHelper::fromBlockPos).toList());
