@@ -49,7 +49,7 @@ public abstract class SpiritToolItem extends MiningToolItem {
 			}
 		}
 
-		return ((SpiritToolItem) itemStack.getItem()).isEntitySummoned(clientWorld, holder) ? 1 : 0;
+		return ((SpiritToolItem) itemStack.getItem()).isEntitySummoned(itemStack, clientWorld, holder) ? 1 : 0;
 	}
 
 	// Spirit tools should not work as regular tools
@@ -68,10 +68,11 @@ public abstract class SpiritToolItem extends MiningToolItem {
 
 	protected abstract EntityType<? extends SpiritToolEntity> getToolEntityType();
 
-	protected boolean isEntitySummoned(World world, Entity holder) {
+	protected boolean isEntitySummoned(ItemStack itemStack, World world, Entity holder) {
 		double expandBy = Math.sqrt(Math.pow(SpiritPickaxeEntity.SUMMON_RANGE, 2) * 2);
 		return !world.getEntitiesByType(getToolEntityType(), holder.getBoundingBox().expand(expandBy),
-				spiritPickaxe -> holder.equals(spiritPickaxe.getOwner())
+				spiritTool -> holder.getUuid().equals(spiritTool.getOwnerUUID()) && ItemStack.areEqual(
+						spiritTool.getItemStack(), itemStack)
 		).isEmpty();
 	}
 
@@ -83,17 +84,18 @@ public abstract class SpiritToolItem extends MiningToolItem {
 		World world = context.getWorld();
 		BlockPos blockPos = context.getBlockPos();
 		BlockState state = world.getBlockState(blockPos);
+		ItemStack itemStack = context.getStack();
+
 		if (!(world instanceof ServerWorld)) {
-			return spiritToolSuitableFor(state) && !isEntitySummoned(world, player) ? ActionResult.SUCCESS :
+			return spiritToolSuitableFor(state) && !isEntitySummoned(itemStack, world, player) ? ActionResult.SUCCESS :
 					ActionResult.FAIL;
 		}
 
-		if (isEntitySummoned(world, player)) return ActionResult.FAIL;
+		if (isEntitySummoned(itemStack, world, player)) return ActionResult.FAIL;
 
 		Set<BlockPos> miningPositions = findBlocksToMine(world, blockPos);
 		if (miningPositions == null) return ActionResult.FAIL;
 
-		ItemStack itemStack = context.getStack();
 		itemStack.damage(
 				1, player, e -> e.sendEquipmentBreakStatus(
 						context.getHand() == Hand.MAIN_HAND ? EquipmentSlot.MAINHAND : EquipmentSlot.OFFHAND));

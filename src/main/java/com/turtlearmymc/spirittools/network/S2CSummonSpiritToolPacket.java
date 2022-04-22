@@ -1,7 +1,6 @@
 package com.turtlearmymc.spirittools.network;
 
 import com.turtlearmymc.spirittools.SpiritTools;
-import com.turtlearmymc.spirittools.entities.SpiritToolEntity;
 import io.netty.buffer.Unpooled;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
@@ -27,7 +26,6 @@ public class S2CSummonSpiritToolPacket {
 		PacketByteBuf buf = new PacketByteBuf(Unpooled.buffer());
 		buf.writeVarInt(Registry.ENTITY_TYPE.getRawId(entity.getType()));
 		buf.writeUuid(entity.getUuid());
-		buf.writeUuid(((SpiritToolEntity) entity).getOwnerUUID());
 		buf.writeVarInt(entity.getId());
 		buf.writeDouble(entity.getX());
 		buf.writeDouble(entity.getY());
@@ -41,10 +39,8 @@ public class S2CSummonSpiritToolPacket {
 	public static void onPacket(
 			MinecraftClient client, ClientPlayNetworkHandler networkHandler, PacketByteBuf buffer, PacketSender sender
 	) {
-		EntityType<? extends SpiritToolEntity> type =
-				(EntityType<SpiritToolEntity>) Registry.ENTITY_TYPE.get(buffer.readVarInt());
+		EntityType<?> type = Registry.ENTITY_TYPE.get(buffer.readVarInt());
 		UUID entityUUID = buffer.readUuid();
-		UUID ownerUUID = buffer.readUuid();
 		int entityID = buffer.readVarInt();
 		double x = buffer.readDouble();
 		double y = buffer.readDouble();
@@ -52,7 +48,7 @@ public class S2CSummonSpiritToolPacket {
 		float pitch = (buffer.readByte() * 360) / 256.0F;
 		float yaw = (buffer.readByte() * 360) / 256.0F;
 		ClientWorld world = MinecraftClient.getInstance().world;
-		SpiritToolEntity entity = type.create(world);
+		Entity entity = type.create(world);
 		client.execute(() -> {
 			if (world != null && entity != null) {
 				entity.setPosition(x, y, z);
@@ -61,7 +57,6 @@ public class S2CSummonSpiritToolPacket {
 				entity.getYaw(yaw);
 				entity.setId(entityID);
 				entity.setUuid(entityUUID);
-				entity.setOwner(world.getPlayerByUuid(ownerUUID));
 				world.addEntity(entityID, entity);
 			}
 		});
