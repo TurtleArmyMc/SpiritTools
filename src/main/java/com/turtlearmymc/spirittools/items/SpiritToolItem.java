@@ -8,16 +8,18 @@ import net.minecraft.block.BlockState;
 import net.minecraft.client.world.ClientWorld;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.EntityType;
+import net.minecraft.entity.EquipmentSlot;
 import net.minecraft.entity.LivingEntity;
 import net.minecraft.entity.player.PlayerEntity;
-import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
 import net.minecraft.item.ItemUsageContext;
+import net.minecraft.item.MiningToolItem;
 import net.minecraft.item.ToolMaterial;
 import net.minecraft.server.world.ServerWorld;
 import net.minecraft.tag.BlockTags;
 import net.minecraft.tag.TagKey;
 import net.minecraft.util.ActionResult;
+import net.minecraft.util.Hand;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Direction;
 import net.minecraft.util.math.Vec3d;
@@ -26,11 +28,11 @@ import net.minecraft.world.World;
 import java.util.HashSet;
 import java.util.Set;
 
-public abstract class SpiritToolItem extends Item {
+public abstract class SpiritToolItem extends MiningToolItem {
 	protected static final double SEARCH_BLOCK_RANGE = 5;
 
-	public SpiritToolItem(Settings settings) {
-		super(settings);
+	public SpiritToolItem(float attackDamage, float attackSpeed, ToolMaterial material, Settings settings) {
+		super(attackDamage, attackSpeed, material, null, settings);
 	}
 
 	public static float summonedPredicateProvider(
@@ -50,7 +52,17 @@ public abstract class SpiritToolItem extends Item {
 		return ((SpiritToolItem) itemStack.getItem()).isEntitySummoned(clientWorld, holder) ? 1 : 0;
 	}
 
-	protected abstract ToolMaterial getMaterial();
+	// Spirit tools should not work as regular tools
+	@Override
+	public boolean isSuitableFor(BlockState state) {
+		return false;
+	}
+
+	// Spirit tools should not work as regular tools
+	@Override
+	public float getMiningSpeedMultiplier(ItemStack stack, BlockState state) {
+		return 1;
+	}
 
 	protected abstract TagKey<Block> getEffectiveBlocks();
 
@@ -82,6 +94,9 @@ public abstract class SpiritToolItem extends Item {
 		if (miningPositions == null) return ActionResult.FAIL;
 
 		ItemStack itemStack = context.getStack();
+		itemStack.damage(
+				1, player, e -> e.sendEquipmentBreakStatus(
+						context.getHand() == Hand.MAIN_HAND ? EquipmentSlot.MAINHAND : EquipmentSlot.OFFHAND));
 		Direction direction = context.getSide();
 		Vec3d spawnAt =
 				Vec3d.of(state.getCollisionShape(world, blockPos).isEmpty() ? blockPos : blockPos.offset(direction));
@@ -89,6 +104,7 @@ public abstract class SpiritToolItem extends Item {
 		SpiritToolEntity toolEntity = getToolEntityType().create(world);
 		toolEntity.setPosition(spawnAt);
 		toolEntity.setOwner(player);
+		toolEntity.setItemStack(itemStack);
 		toolEntity.scheduleToMine(state.getBlock(), miningPositions);
 
 		world.spawnEntity(toolEntity);

@@ -38,6 +38,7 @@ public abstract class SpiritToolEntity extends Entity {
 	protected int toolAge;
 	protected Entity owner;
 	protected UUID ownerUuid;
+	protected ItemStack itemStack;
 
 	protected List<ItemStack> inventory;
 	protected int xpAmount;
@@ -74,6 +75,14 @@ public abstract class SpiritToolEntity extends Entity {
 	public void setOwner(LivingEntity owner) {
 		this.owner = owner;
 		ownerUuid = owner != null ? owner.getUuid() : null;
+	}
+
+	public ItemStack getItemStack() {
+		return itemStack;
+	}
+
+	public void setItemStack(ItemStack itemStack) {
+		this.itemStack = itemStack;
 	}
 
 	public UUID getOwnerUUID() {
@@ -135,7 +144,7 @@ public abstract class SpiritToolEntity extends Entity {
 
 	protected void finishBreakingBlock(BlockState state) {
 		addDropsToInventory(miningAt, state);
-		state.onStacksDropped((ServerWorld) world, miningAt, new ItemStack(getItem()));
+		state.onStacksDropped((ServerWorld) world, miningAt, itemStack);
 		collectXp(miningAt);
 
 		world.setBlockBreakingInfo(getId(), miningAt, -1);
@@ -165,13 +174,13 @@ public abstract class SpiritToolEntity extends Entity {
 
 	protected List<ItemStack> getDropStacks(BlockPos pos, BlockState state) {
 		BlockEntity blockEntity = state.hasBlockEntity() ? world.getBlockEntity(pos) : null;
-		return Block.getDroppedStacks(state, (ServerWorld) world, miningAt, blockEntity);
+		return Block.getDroppedStacks(state, (ServerWorld) world, miningAt, blockEntity, this, itemStack);
 	}
 
 	protected boolean ownerWithinRange() {
 		if (getOwner() == null || squaredDistanceTo(getOwner()) >= SUMMON_RANGE * SUMMON_RANGE) return false;
 		if (getOwner() instanceof PlayerEntity player) {
-			return player.getInventory().contains(new ItemStack(getItem()));
+			return player.getInventory().contains(itemStack);
 		}
 		return false;
 	}
@@ -269,6 +278,8 @@ public abstract class SpiritToolEntity extends Entity {
 			mineMaterial = Registry.BLOCK.get(new Identifier(nbt.getString("miningMaterial")));
 		if (nbt.contains("miningProgress")) miningTicks = nbt.getInt("miningProgress");
 		if (nbt.contains("miningAt")) miningAt = NbtHelper.toBlockPos(nbt.getCompound("miningAt"));
+
+		if (nbt.contains("itemStack")) itemStack = ItemStack.fromNbt(nbt.getCompound("itemStack"));
 	}
 
 	@Override
@@ -289,6 +300,8 @@ public abstract class SpiritToolEntity extends Entity {
 		nbt.putString("miningMaterial", Registry.BLOCK.getId(mineMaterial).toString());
 		nbt.putInt("miningProgress", miningTicks);
 		if (miningAt != null) nbt.put("miningAt", NbtHelper.fromBlockPos(miningAt));
+
+		if (itemStack != null) nbt.put("itemStack", itemStack.getNbt());
 	}
 
 	@Override
