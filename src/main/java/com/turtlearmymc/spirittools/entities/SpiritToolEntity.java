@@ -5,6 +5,8 @@ import com.turtlearmymc.spirittools.network.S2CSummonSpiritToolPacket;
 import net.minecraft.block.Block;
 import net.minecraft.block.BlockState;
 import net.minecraft.block.entity.BlockEntity;
+import net.minecraft.enchantment.EnchantmentHelper;
+import net.minecraft.enchantment.Enchantments;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.EntityType;
 import net.minecraft.entity.ExperienceOrbEntity;
@@ -164,10 +166,11 @@ public abstract class SpiritToolEntity extends Entity {
 	}
 
 	protected void collectXp(BlockPos pos) {
-		world.getEntitiesByType(EntityType.EXPERIENCE_ORB, new Box(pos), orb -> orb.age == 0).forEach(orb -> {
-			xpAmount += orb.getExperienceAmount();
-			orb.discard();
-		});
+		world.getEntitiesByType(EntityType.EXPERIENCE_ORB, new Box(pos), orb -> orb.age == 0 && !orb.isRemoved())
+				.forEach(orb -> {
+					xpAmount += orb.getExperienceAmount();
+					orb.discard();
+				});
 	}
 
 	protected void returnToOwner() {
@@ -203,6 +206,11 @@ public abstract class SpiritToolEntity extends Entity {
 
 	protected float getBlockBreakingSpeed() {
 		float speed = getMaterial().getMiningSpeedMultiplier();
+
+		int efficiency = EnchantmentHelper.getLevel(Enchantments.EFFICIENCY, getItemStack());
+		if (efficiency > 0 && !getItemStack().isEmpty()) {
+			speed += (float) (efficiency * efficiency + 1);
+		}
 
 		if (isSubmergedIn(FluidTags.WATER)) speed /= 5f;
 
