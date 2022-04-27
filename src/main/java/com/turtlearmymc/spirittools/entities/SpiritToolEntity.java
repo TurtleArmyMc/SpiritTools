@@ -142,7 +142,7 @@ public abstract class SpiritToolEntity extends Entity {
 		}
 		++miningTicks;
 		BlockState stateAt = world.getBlockState(miningAt);
-		float breakProgress = calcBlockBreakingDelta(stateAt) * (miningTicks + 1f);
+		float breakProgress = calcBlockBreakingDelta(stateAt) * miningTicks;
 		int breakStage = (int) (breakProgress * 10f);
 		if (breakProgress >= 1) {
 			finishBreakingBlock(stateAt);
@@ -264,7 +264,7 @@ public abstract class SpiritToolEntity extends Entity {
 	 */
 	protected boolean findNextMiningBlock() {
 		Optional<BlockPos> candidate = scheduledMiningPositions.stream()
-				.sorted((a, b) -> squaredDistanceTo(Vec3d.of(a)) < squaredDistanceTo(Vec3d.of(b)) ? -1 : 1)
+				.sorted((a, b) -> (int) Math.signum(squaredDistanceTo(Vec3d.of(a)) - squaredDistanceTo(Vec3d.of(b))))
 				.filter(pos -> mineMaterial.equals(world.getBlockState(pos).getBlock())).findFirst();
 		if (candidate.isEmpty()) return false;
 		miningAt = candidate.get();
