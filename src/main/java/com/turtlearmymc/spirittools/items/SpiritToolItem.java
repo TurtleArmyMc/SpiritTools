@@ -2,7 +2,6 @@ package com.turtlearmymc.spirittools.items;
 
 import com.turtlearmymc.spirittools.entities.SpiritPickaxeEntity;
 import com.turtlearmymc.spirittools.entities.SpiritToolEntity;
-import net.fabricmc.yarn.constants.MiningLevels;
 import net.minecraft.block.Block;
 import net.minecraft.block.BlockState;
 import net.minecraft.client.world.ClientWorld;
@@ -14,9 +13,7 @@ import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.item.ItemStack;
 import net.minecraft.item.ItemUsageContext;
 import net.minecraft.item.MiningToolItem;
-import net.minecraft.item.ToolMaterial;
 import net.minecraft.server.world.ServerWorld;
-import net.minecraft.tag.BlockTags;
 import net.minecraft.tag.TagKey;
 import net.minecraft.util.ActionResult;
 import net.minecraft.util.Hand;
@@ -31,8 +28,8 @@ import java.util.Set;
 public abstract class SpiritToolItem extends MiningToolItem {
 	protected static final double SEARCH_BLOCK_RANGE = 5;
 
-	public SpiritToolItem(float attackDamage, float attackSpeed, ToolMaterial material, Settings settings) {
-		super(attackDamage, attackSpeed, material, null, settings);
+	public SpiritToolItem(float attackDamage, float attackSpeed, TagKey<Block> effectiveBlocks, Settings settings) {
+		super(attackDamage, attackSpeed, SpiritToolMaterial.SPIRIT_TOOL_MATERIAL, effectiveBlocks, settings);
 	}
 
 	public static float summonedPredicateProvider(
@@ -63,8 +60,6 @@ public abstract class SpiritToolItem extends MiningToolItem {
 	public float getMiningSpeedMultiplier(ItemStack stack, BlockState state) {
 		return 1;
 	}
-
-	protected abstract TagKey<Block> getEffectiveBlocks();
 
 	protected abstract EntityType<? extends SpiritToolEntity> getToolEntityType();
 
@@ -114,17 +109,7 @@ public abstract class SpiritToolItem extends MiningToolItem {
 	}
 
 	protected boolean spiritToolSuitableFor(BlockState state) {
-		int i = getMaterial().getMiningLevel();
-		if (i < MiningLevels.DIAMOND && state.isIn(BlockTags.NEEDS_DIAMOND_TOOL)) {
-			return false;
-		}
-		if (i < MiningLevels.IRON && state.isIn(BlockTags.NEEDS_IRON_TOOL)) {
-			return false;
-		}
-		if (i < MiningLevels.STONE && state.isIn(BlockTags.NEEDS_STONE_TOOL)) {
-			return false;
-		}
-		return state.isIn(getEffectiveBlocks());
+		return super.isSuitableFor(state);
 	}
 
 	protected Set<BlockPos> findBlocksToMine(World world, BlockPos searchFrom) {
