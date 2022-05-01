@@ -16,7 +16,6 @@ import net.minecraft.entity.data.TrackedData;
 import net.minecraft.entity.data.TrackedDataHandlerRegistry;
 import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.item.ItemStack;
-import net.minecraft.item.ToolMaterial;
 import net.minecraft.nbt.NbtCompound;
 import net.minecraft.nbt.NbtElement;
 import net.minecraft.nbt.NbtHelper;
@@ -62,10 +61,6 @@ public abstract class SpiritToolEntity extends Entity {
 		inventory = new ArrayList<>();
 		scheduledMiningPositions = new HashSet<>();
 	}
-
-	protected abstract ToolMaterial getMaterial();
-
-	protected abstract SpiritToolItem getItem();
 
 	public Entity getOwner() {
 		if (owner != null && !owner.isRemoved()) {
@@ -205,10 +200,11 @@ public abstract class SpiritToolEntity extends Entity {
 	}
 
 	protected float getBlockBreakingSpeed() {
-		float speed = getMaterial().getMiningSpeedMultiplier();
+		ItemStack stack = getItemStack();
+		float speed = ((SpiritToolItem) stack.getItem()).spiritToolMiningSpeed();
 
-		int efficiency = EnchantmentHelper.getLevel(Enchantments.EFFICIENCY, getItemStack());
-		if (efficiency > 0 && !getItemStack().isEmpty()) {
+		int efficiency = EnchantmentHelper.getLevel(Enchantments.EFFICIENCY, stack);
+		if (efficiency > 0) {
 			speed += (float) (efficiency * efficiency + 1);
 		}
 

@@ -7,7 +7,6 @@ import net.minecraft.block.BlockState;
 import net.minecraft.client.world.ClientWorld;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.EntityType;
-import net.minecraft.entity.EquipmentSlot;
 import net.minecraft.entity.LivingEntity;
 import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.item.ItemStack;
@@ -16,7 +15,6 @@ import net.minecraft.item.MiningToolItem;
 import net.minecraft.server.world.ServerWorld;
 import net.minecraft.tag.TagKey;
 import net.minecraft.util.ActionResult;
-import net.minecraft.util.Hand;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Direction;
 import net.minecraft.util.math.Vec3d;
@@ -91,9 +89,8 @@ public abstract class SpiritToolItem extends MiningToolItem {
 		Set<BlockPos> miningPositions = findBlocksToMine(world, blockPos);
 		if (miningPositions == null) return ActionResult.FAIL;
 
-		itemStack.damage(
-				1, player, e -> e.sendEquipmentBreakStatus(
-						context.getHand() == Hand.MAIN_HAND ? EquipmentSlot.MAINHAND : EquipmentSlot.OFFHAND));
+		int damageAmount = 1;
+		itemStack.damage(damageAmount, player, holder -> holder.sendToolBreakStatus(context.getHand()));
 		Direction direction = context.getSide();
 		Vec3d spawnAt =
 				Vec3d.of(state.getCollisionShape(world, blockPos).isEmpty() ? blockPos : blockPos.offset(direction));
@@ -106,6 +103,10 @@ public abstract class SpiritToolItem extends MiningToolItem {
 
 		world.spawnEntity(toolEntity);
 		return ActionResult.SUCCESS;
+	}
+
+	public float spiritToolMiningSpeed() {
+		return getMaterial().getMiningSpeedMultiplier();
 	}
 
 	protected boolean spiritToolSuitableFor(BlockState state) {
