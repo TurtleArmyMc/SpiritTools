@@ -21,9 +21,10 @@ import net.minecraft.util.math.Vec3d;
 import net.minecraft.world.World;
 
 import java.util.HashSet;
+import java.util.Optional;
 import java.util.Set;
 
-public abstract class SpiritToolItem extends MiningToolItem {
+public abstract class SpiritToolItem<ToolEntityType extends SpiritToolEntity> extends MiningToolItem {
 	protected static final double SEARCH_BLOCK_RANGE = 5;
 
 	public SpiritToolItem(float attackDamage, float attackSpeed, TagKey<Block> effectiveBlocks, Settings settings) {
@@ -44,7 +45,7 @@ public abstract class SpiritToolItem extends MiningToolItem {
 			}
 		}
 
-		return ((SpiritToolItem) itemStack.getItem()).isEntitySummoned(itemStack, clientWorld, holder) ? 1 : 0;
+		return ((SpiritToolItem<?>) itemStack.getItem()).isEntitySummoned(itemStack, clientWorld, holder) ? 1 : 0;
 	}
 
 	// Spirit tools should not work as regular tools
@@ -59,14 +60,18 @@ public abstract class SpiritToolItem extends MiningToolItem {
 		return 1;
 	}
 
-	protected abstract EntityType<? extends SpiritToolEntity> getToolEntityType();
+	protected abstract EntityType<ToolEntityType> getToolEntityType();
 
 	protected boolean isEntitySummoned(ItemStack itemStack, World world, Entity holder) {
+		return findSummonedEntity(itemStack, world, holder).isPresent();
+	}
+
+	protected Optional<ToolEntityType> findSummonedEntity(ItemStack itemStack, World world, Entity holder) {
 		double expandBy = Math.sqrt(Math.pow(SpiritPickaxeEntity.SUMMON_RANGE, 2) * 2);
-		return !world.getEntitiesByType(getToolEntityType(), holder.getBoundingBox().expand(expandBy),
+		return world.getEntitiesByType(getToolEntityType(), holder.getBoundingBox().expand(expandBy),
 				spiritTool -> holder.getUuid().equals(spiritTool.getOwnerUUID()) && ItemStack.areEqual(
 						spiritTool.getItemStack(), itemStack)
-		).isEmpty();
+		).stream().findAny();
 	}
 
 	@Override
@@ -95,14 +100,23 @@ public abstract class SpiritToolItem extends MiningToolItem {
 		Vec3d spawnAt =
 				Vec3d.of(state.getCollisionShape(world, blockPos).isEmpty() ? blockPos : blockPos.offset(direction));
 
-		SpiritToolEntity toolEntity = getToolEntityType().create(world);
-		toolEntity.setPosition(spawnAt);
-		toolEntity.setOwner(player);
-		toolEntity.setItemStack(itemStack);
+		ToolEntityType toolEntity = spawnToolEntity(world, spawnAt, player, itemStack);
 		toolEntity.scheduleToMine(state.getBlock(), miningPositions);
 
-		world.spawnEntity(toolEntity);
 		return ActionResult.SUCCESS;
+	}
+
+	public ToolEntityType spawnToolEntity(
+			World world, Vec3d spawnAt, PlayerEntity owner, ItemStack stack
+	) {
+		ToolEntityType toolEntity = getToolEntityType().create(world);
+		toolEntity.setPosition(spawnAt);
+		toolEntity.setOwner(owner);
+		toolEntity.setItemStack(stack);
+
+		world.spawnEntity(toolEntity);
+
+		return toolEntity;
 	}
 
 	public float spiritToolMiningSpeed() {
