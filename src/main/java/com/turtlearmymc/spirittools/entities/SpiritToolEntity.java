@@ -37,7 +37,6 @@ import java.util.*;
 public abstract class SpiritToolEntity extends Entity {
 	public static final int SUMMON_RANGE = 20;
 	protected static final int DESPAWN_AGE = 200;
-	protected static final int MAX_TICKS_OUTSIDE_RANGE = 20;
 	private static final TrackedData<ItemStack> STACK =
 			DataTracker.registerData(SpiritToolEntity.class, TrackedDataHandlerRegistry.ITEM_STACK);
 	private static final TrackedData<Optional<UUID>> OWNER_UUID =
@@ -53,8 +52,6 @@ public abstract class SpiritToolEntity extends Entity {
 	protected int miningTicks;
 	protected BlockPos miningAt;
 	protected int prevBreakStage;
-
-	protected int ticksOutsideRange;
 
 	public SpiritToolEntity(EntityType<?> type, World world) {
 		super(type, world);
@@ -114,23 +111,22 @@ public abstract class SpiritToolEntity extends Entity {
 
 	protected void serverTick() {
 		if (++toolAge >= DESPAWN_AGE) {
-			returnToOwner();
+			tryReturnToOwner();
 			return;
 		}
 
 		// If the entity has not been fully deserialized/synced yet including the owner uuid, do nothing
 		if (getOwnerUUID() == null) return;
 
-		ticksOutsideRange = ownerWithinRange() ? 0 : ticksOutsideRange + 1;
-		if (ticksOutsideRange >= MAX_TICKS_OUTSIDE_RANGE) {
-			returnToOwner();
+		if (!ownerWithinRange()) {
+			tryReturnToOwner();
 			return;
 		}
 
 		if (mineMaterial == null) return;
 		if (miningAt == null) {
 			if (!findNextMiningBlock()) {
-				returnToOwner();
+				tryReturnToOwner();
 				return;
 			}
 			lookAt(miningAt);
@@ -168,9 +164,9 @@ public abstract class SpiritToolEntity extends Entity {
 				});
 	}
 
-	protected void returnToOwner() {
-		if (!giveItemsToOwner()) dropItems();
-		if (!giveXpToOwner()) dropXp();
+	protected void tryReturnToOwner() {
+		if (!tryGiveItemsToOwner()) dropItems();
+		if (!tryGiveXpToOwner()) dropXp();
 		discard();
 	}
 
@@ -216,7 +212,7 @@ public abstract class SpiritToolEntity extends Entity {
 	/**
 	 * @return whether items were successfully inserted/dropped
 	 */
-	protected boolean giveItemsToOwner() {
+	protected boolean tryGiveItemsToOwner() {
 		if (getOwner() instanceof PlayerEntity player) {
 			inventory.forEach(player.getInventory()::offerOrDrop);
 			inventory.clear();
@@ -233,7 +229,7 @@ public abstract class SpiritToolEntity extends Entity {
 	/**
 	 * @return whether xp was successfully given
 	 */
-	protected boolean giveXpToOwner() {
+	protected boolean tryGiveXpToOwner() {
 		if (getOwner() instanceof PlayerEntity player) {
 			player.addExperience(xpAmount);
 			xpAmount = 0;
