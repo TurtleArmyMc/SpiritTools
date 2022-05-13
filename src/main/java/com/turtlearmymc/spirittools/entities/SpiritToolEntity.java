@@ -60,6 +60,10 @@ public abstract class SpiritToolEntity extends Entity {
 		scheduledMiningPositions = new HashSet<>();
 	}
 
+	public int getTicksUntilDespawn() {
+		return DESPAWN_AGE - toolAge;
+	}
+
 	public Entity getOwner() {
 		if (owner != null && !owner.isRemoved()) {
 			return owner;
@@ -92,9 +96,17 @@ public abstract class SpiritToolEntity extends Entity {
 		getDataTracker().set(OWNER_UUID, Optional.ofNullable(uuid));
 	}
 
-	public void scheduleToMine(Block mineMaterial, Set<BlockPos> miningPositions) {
+	/**
+	 * @return scheduled mining positions
+	 */
+	public Set<BlockPos> scheduleToMine(Block mineMaterial, Set<BlockPos> miningPositions) {
+		Set<BlockPos> scheduled = new HashSet<>(miningPositions);
+		scheduled.removeAll(scheduledMiningPositions);
+
 		this.mineMaterial = mineMaterial;
 		scheduledMiningPositions.addAll(miningPositions);
+
+		return scheduled;
 	}
 
 	@Override
@@ -131,10 +143,12 @@ public abstract class SpiritToolEntity extends Entity {
 				return;
 			}
 			lookAt(miningAt);
+			// Take 1 tick before beginning to mine a block
+			return;
 		}
 		++miningTicks;
 		BlockState stateAt = world.getBlockState(miningAt);
-		float breakProgress = calcBlockBreakingDelta(stateAt) * miningTicks;
+		float breakProgress = calcBlockBreakingDelta(stateAt, miningAt) * miningTicks;
 		int breakStage = (int) (breakProgress * 10f);
 		if (breakProgress >= 1) {
 			finishBreakingBlock(stateAt);
@@ -188,8 +202,13 @@ public abstract class SpiritToolEntity extends Entity {
 		return false;
 	}
 
-	protected float calcBlockBreakingDelta(BlockState stateAt) {
-		float hardness = stateAt.getHardness(world, miningAt);
+	public int calcTicksToBreak(BlockState state, BlockPos pos) {
+		float delta = calcBlockBreakingDelta(state, pos);
+		return delta != 0 ? (int) Math.ceil(1 / delta) : 0;
+	}
+
+	protected float calcBlockBreakingDelta(BlockState state, BlockPos pos) {
+		float hardness = state.getHardness(world, pos);
 		if (hardness == -1.0f) {
 			return 0.0f;
 		}
@@ -198,7 +217,7 @@ public abstract class SpiritToolEntity extends Entity {
 
 	protected float getBlockBreakingSpeed() {
 		ItemStack stack = getItemStack();
-		float speed = ((SpiritToolItem) stack.getItem()).spiritToolMiningSpeed();
+		float speed = ((SpiritToolItem<?>) stack.getItem()).spiritToolMiningSpeed();
 
 		int efficiency = EnchantmentHelper.getLevel(Enchantments.EFFICIENCY, stack);
 		if (efficiency > 0) {

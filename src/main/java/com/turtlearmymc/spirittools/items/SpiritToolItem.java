@@ -1,6 +1,5 @@
 package com.turtlearmymc.spirittools.items;
 
-import com.turtlearmymc.spirittools.entities.SpiritPickaxeEntity;
 import com.turtlearmymc.spirittools.entities.SpiritToolEntity;
 import net.minecraft.block.Block;
 import net.minecraft.block.BlockState;
@@ -67,7 +66,7 @@ public abstract class SpiritToolItem<ToolEntityType extends SpiritToolEntity> ex
 	}
 
 	protected Optional<ToolEntityType> findSummonedEntity(ItemStack itemStack, World world, Entity holder) {
-		double expandBy = Math.sqrt(Math.pow(SpiritPickaxeEntity.SUMMON_RANGE, 2) * 2);
+		double expandBy = Math.sqrt(Math.pow(SpiritToolEntity.SUMMON_RANGE, 2) * 2);
 		return world.getEntitiesByType(getToolEntityType(), holder.getBoundingBox().expand(expandBy),
 				spiritTool -> holder.getUuid().equals(spiritTool.getOwnerUUID()) && ItemStack.areEqual(
 						spiritTool.getItemStack(), itemStack)
@@ -80,8 +79,8 @@ public abstract class SpiritToolItem<ToolEntityType extends SpiritToolEntity> ex
 		if (player == null) return ActionResult.FAIL;
 
 		World world = context.getWorld();
-		BlockPos blockPos = context.getBlockPos();
-		BlockState state = world.getBlockState(blockPos);
+		BlockPos hitPos = context.getBlockPos();
+		BlockState state = world.getBlockState(hitPos);
 		ItemStack itemStack = context.getStack();
 
 		if (!(world instanceof ServerWorld)) {
@@ -91,17 +90,23 @@ public abstract class SpiritToolItem<ToolEntityType extends SpiritToolEntity> ex
 
 		if (isEntitySummoned(itemStack, world, player)) return ActionResult.FAIL;
 
-		Set<BlockPos> miningPositions = findBlocksToMine(world, blockPos);
+		Set<BlockPos> miningPositions = findBlocksToMine(world, hitPos);
 		if (miningPositions == null) return ActionResult.FAIL;
 
-		int damageAmount = 1;
-		itemStack.damage(damageAmount, player, holder -> holder.sendToolBreakStatus(context.getHand()));
 		Direction direction = context.getSide();
-		Vec3d spawnAt =
-				Vec3d.of(state.getCollisionShape(world, blockPos).isEmpty() ? blockPos : blockPos.offset(direction));
+		Vec3d spawnAt = Vec3d.of(state.getCollisionShape(world, hitPos).isEmpty() ? hitPos : hitPos.offset(direction));
 
 		ToolEntityType toolEntity = spawnToolEntity(world, spawnAt, player, itemStack);
-		toolEntity.scheduleToMine(state.getBlock(), miningPositions);
+		int ticksUntilDespawn = toolEntity.getTicksUntilDespawn();
+
+		Set<BlockPos> scheduledPositions = toolEntity.scheduleToMine(state.getBlock(), miningPositions);
+
+		int scheduledBlockCount = scheduledPositions.size();
+		// 1 tick is added for the time it takes the tool to find a new target block after finishing mining
+		int estimatedTicksToBreak = toolEntity.calcTicksToBreak(state, hitPos) + 1;
+		int estimatedBlocksBreakable = ticksUntilDespawn / estimatedTicksToBreak;
+		int damageAmount = Math.min(scheduledBlockCount, estimatedBlocksBreakable);
+		itemStack.damage(damageAmount, player, holder -> holder.sendToolBreakStatus(context.getHand()));
 
 		return ActionResult.SUCCESS;
 	}
