@@ -33,6 +33,7 @@ import net.minecraft.util.registry.Registry;
 import net.minecraft.world.World;
 
 import java.util.*;
+import java.util.stream.Collectors;
 
 public abstract class SpiritToolEntity extends Entity {
 	public static final int SUMMON_RANGE = 20;
@@ -165,8 +166,8 @@ public abstract class SpiritToolEntity extends Entity {
 	}
 
 	protected void tryReturnToOwner() {
-		if (!tryGiveItemsToOwner()) dropItems();
-		if (!tryGiveXpToOwner()) dropXp();
+		tryGiveItemsToOwner();
+		tryGiveXpToOwner();
 		discard();
 	}
 
@@ -209,16 +210,11 @@ public abstract class SpiritToolEntity extends Entity {
 		return speed;
 	}
 
-	/**
-	 * @return whether items were successfully inserted/dropped
-	 */
-	protected boolean tryGiveItemsToOwner() {
+	protected void tryGiveItemsToOwner() {
 		if (getOwner() instanceof PlayerEntity player) {
 			inventory.forEach(player.getInventory()::offerOrDrop);
 			inventory.clear();
-			return true;
 		}
-		return false;
 	}
 
 	protected void dropItems() {
@@ -226,28 +222,29 @@ public abstract class SpiritToolEntity extends Entity {
 		inventory.clear();
 	}
 
-	/**
-	 * @return whether xp was successfully given
-	 */
-	protected boolean tryGiveXpToOwner() {
+	protected void tryGiveXpToOwner() {
 		if (getOwner() instanceof PlayerEntity player) {
 			player.addExperience(xpAmount);
 			xpAmount = 0;
-			return true;
 		}
-		return false;
 	}
 
 	protected void dropXp() {
 		ExperienceOrbEntity.spawn((ServerWorld) world, getPos(), xpAmount);
+		xpAmount = 0;
 	}
 
 	@Override
 	public void remove(RemovalReason removalReason) {
 		if (miningAt != null) {
-			// Clear block breaking progress when despawning
+			// Clear block breaking progress when removed
 			world.setBlockBreakingInfo(getId(), miningAt, -1);
 		}
+		if (!world.isClient && removalReason.shouldDestroy()) {
+			dropItems();
+			dropXp();
+		}
+
 		super.remove(removalReason);
 	}
 
@@ -297,15 +294,14 @@ public abstract class SpiritToolEntity extends Entity {
 		nbt.putUuid("owner", getOwnerUUID());
 		nbt.putInt("toolAge", toolAge);
 
-		NbtList inventoryNbt = new NbtList();
-		inventoryNbt.addAll(inventory.stream().map(stack -> stack.writeNbt(new NbtCompound())).toList());
-		nbt.put("inventory", inventoryNbt);
+		nbt.put("inventory", inventory.stream().map(stack -> stack.writeNbt(new NbtCompound()))
+				.collect(Collectors.toCollection(NbtList::new)));
 
 		nbt.putInt("xpAmount", xpAmount);
 
-		NbtList miningPositionsNbt = new NbtList();
-		miningPositionsNbt.addAll(scheduledMiningPositions.stream().map(NbtHelper::fromBlockPos).toList());
-		nbt.put("miningPositions", miningPositionsNbt);
+		nbt.put("miningPositions", scheduledMiningPositions.stream().map(NbtHelper::fromBlockPos)
+				.collect(Collectors.toCollection(NbtList::new)));
+
 
 		nbt.putString("miningMaterial", Registry.BLOCK.getId(mineMaterial).toString());
 		nbt.putInt("miningProgress", miningTicks);
