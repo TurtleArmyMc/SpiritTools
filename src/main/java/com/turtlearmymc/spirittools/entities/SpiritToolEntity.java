@@ -11,9 +11,6 @@ import net.minecraft.entity.Entity;
 import net.minecraft.entity.EntityType;
 import net.minecraft.entity.ExperienceOrbEntity;
 import net.minecraft.entity.LivingEntity;
-import net.minecraft.entity.data.DataTracker;
-import net.minecraft.entity.data.TrackedData;
-import net.minecraft.entity.data.TrackedDataHandlerRegistry;
 import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NbtCompound;
@@ -38,12 +35,11 @@ import java.util.stream.Collectors;
 public abstract class SpiritToolEntity extends Entity {
 	public static final int SUMMON_RANGE = 20;
 	protected static final int DESPAWN_AGE = 200;
-	private static final TrackedData<ItemStack> STACK =
-			DataTracker.registerData(SpiritToolEntity.class, TrackedDataHandlerRegistry.ITEM_STACK);
-	private static final TrackedData<Optional<UUID>> OWNER_UUID =
-			DataTracker.registerData(SpiritToolEntity.class, TrackedDataHandlerRegistry.OPTIONAL_UUID);
+
 	protected int toolAge;
-	protected Entity owner;
+	protected ItemStack summonStack;
+	protected UUID ownerUuid;
+	protected PlayerEntity owner;
 
 	protected List<ItemStack> inventory;
 	protected int xpAmount;
@@ -64,36 +60,35 @@ public abstract class SpiritToolEntity extends Entity {
 		return DESPAWN_AGE - toolAge;
 	}
 
-	public Entity getOwner() {
+	public PlayerEntity getOwner() {
 		if (owner != null && !owner.isRemoved()) {
 			return owner;
 		}
-		if (getOwnerUUID() != null && world instanceof ServerWorld serverWorld) {
-			owner = serverWorld.getEntity(getOwnerUUID());
-			return owner;
+		if (getOwnerUUID() != null) {
+			return world.getPlayerByUuid(getOwnerUUID());
 		}
 		return null;
 	}
 
-	public void setOwner(LivingEntity owner) {
+	public void setOwner(PlayerEntity owner) {
 		this.owner = owner;
 		setOwnerUUID(owner != null ? owner.getUuid() : null);
 	}
 
-	public ItemStack getItemStack() {
-		return getDataTracker().get(STACK);
+	public ItemStack getSummonStack() {
+		return summonStack;
 	}
 
-	public void setItemStack(ItemStack itemStack) {
-		getDataTracker().set(STACK, itemStack);
+	public void setSummonStack(ItemStack stack) {
+		summonStack = stack;
 	}
 
 	public UUID getOwnerUUID() {
-		return getDataTracker().get(OWNER_UUID).orElse(null);
+		return ownerUuid;
 	}
 
-	public void setOwnerUUID(UUID uuid) {
-		getDataTracker().set(OWNER_UUID, Optional.ofNullable(uuid));
+	public void setOwnerUUID(UUID ownerUuid) {
+		this.ownerUuid = ownerUuid;
 	}
 
 	/**
@@ -131,7 +126,7 @@ public abstract class SpiritToolEntity extends Entity {
 		// If the entity has not been fully deserialized/synced yet including the owner uuid, do nothing
 		if (getOwnerUUID() == null) return;
 
-		if (!ownerWithinRange()) {
+		if (!holderWithinRange()) {
 			tryReturnToOwner();
 			return;
 		}
@@ -160,7 +155,7 @@ public abstract class SpiritToolEntity extends Entity {
 
 	protected void finishBreakingBlock(BlockState state) {
 		addDropsToInventory(miningAt, state);
-		state.onStacksDropped((ServerWorld) world, miningAt, getItemStack());
+		state.onStacksDropped((ServerWorld) world, miningAt, getSummonStack());
 		collectXp(miningAt);
 
 		world.setBlockBreakingInfo(getId(), miningAt, -1);
@@ -182,6 +177,7 @@ public abstract class SpiritToolEntity extends Entity {
 	public void tryReturnToOwner() {
 		tryGiveItemsToOwner();
 		tryGiveXpToOwner();
+		tryClearItemNbt();
 		discard();
 	}
 
@@ -191,15 +187,29 @@ public abstract class SpiritToolEntity extends Entity {
 
 	protected List<ItemStack> getDropStacks(BlockPos pos, BlockState state) {
 		BlockEntity blockEntity = state.hasBlockEntity() ? world.getBlockEntity(pos) : null;
-		return Block.getDroppedStacks(state, (ServerWorld) world, miningAt, blockEntity, this, getItemStack());
+		return Block.getDroppedStacks(state, (ServerWorld) world, miningAt, blockEntity, this, getSummonStack());
 	}
 
-	protected boolean ownerWithinRange() {
+	protected boolean isSummonStack(ItemStack stack) {
+		if (!(stack.getItem() instanceof SpiritToolItem<?>)) return false;
+		if (!stack.hasNbt() || !stack.getNbt().contains("summonedTool")) return false;
+		return getUuid().equals(stack.getNbt().getUuid("summonedTool"));
+	}
+
+	// Returns a list instead of a single item in case summon item was duplicated
+	protected List<ItemStack> getSummonStacks() {
+		if (getOwner() == null) return Collections.emptyList();
+
+		List<ItemStack> summonItems = getOwner().getInventory().main.stream().filter(this::isSummonStack)
+				.collect(Collectors.toCollection(ArrayList::new));
+		if (isSummonStack(getOwner().getOffHandStack())) summonItems.add(getOwner().getOffHandStack());
+
+		return summonItems;
+	}
+
+	protected boolean holderWithinRange() {
 		if (getOwner() == null || squaredDistanceTo(getOwner()) >= SUMMON_RANGE * SUMMON_RANGE) return false;
-		if (getOwner() instanceof PlayerEntity player) {
-			return player.getInventory().contains(getItemStack());
-		}
-		return false;
+		return !getSummonStacks().isEmpty();
 	}
 
 	public int calcTicksToBreak(BlockState state, BlockPos pos) {
@@ -216,7 +226,7 @@ public abstract class SpiritToolEntity extends Entity {
 	}
 
 	protected float getBlockBreakingSpeed() {
-		ItemStack stack = getItemStack();
+		ItemStack stack = getSummonStack();
 		float speed = ((SpiritToolItem<?>) stack.getItem()).spiritToolMiningSpeed();
 
 		int efficiency = EnchantmentHelper.getLevel(Enchantments.EFFICIENCY, stack);
@@ -230,8 +240,8 @@ public abstract class SpiritToolEntity extends Entity {
 	}
 
 	protected void tryGiveItemsToOwner() {
-		if (getOwner() instanceof PlayerEntity player) {
-			inventory.forEach(player.getInventory()::offerOrDrop);
+		if (getOwner() != null) {
+			inventory.forEach(getOwner().getInventory()::offerOrDrop);
 			inventory.clear();
 		}
 	}
@@ -242,8 +252,8 @@ public abstract class SpiritToolEntity extends Entity {
 	}
 
 	protected void tryGiveXpToOwner() {
-		if (getOwner() instanceof PlayerEntity player) {
-			player.addExperience(xpAmount);
+		if (getOwner() != null) {
+			getOwner().addExperience(xpAmount);
 			xpAmount = 0;
 		}
 	}
@@ -251,6 +261,10 @@ public abstract class SpiritToolEntity extends Entity {
 	protected void dropXp() {
 		ExperienceOrbEntity.spawn((ServerWorld) world, getPos(), xpAmount);
 		xpAmount = 0;
+	}
+
+	protected void tryClearItemNbt() {
+		getSummonStacks().forEach(stack -> stack.removeSubNbt("summonedTool"));
 	}
 
 	@Override
@@ -262,6 +276,7 @@ public abstract class SpiritToolEntity extends Entity {
 		if (!world.isClient && removalReason.shouldDestroy()) {
 			dropItems();
 			dropXp();
+			tryClearItemNbt();
 		}
 
 		super.remove(removalReason);
@@ -281,8 +296,6 @@ public abstract class SpiritToolEntity extends Entity {
 
 	@Override
 	protected void initDataTracker() {
-		getDataTracker().startTracking(STACK, ItemStack.EMPTY);
-		getDataTracker().startTracking(OWNER_UUID, Optional.empty());
 	}
 
 	@Override
@@ -305,7 +318,7 @@ public abstract class SpiritToolEntity extends Entity {
 		if (nbt.contains("miningProgress")) miningTicks = nbt.getInt("miningProgress");
 		if (nbt.contains("miningAt")) miningAt = NbtHelper.toBlockPos(nbt.getCompound("miningAt"));
 
-		if (nbt.contains("itemStack")) setItemStack(ItemStack.fromNbt(nbt.getCompound("itemStack")));
+		if (nbt.contains("itemStack")) setSummonStack(ItemStack.fromNbt(nbt.getCompound("itemStack")));
 	}
 
 	@Override
@@ -326,7 +339,7 @@ public abstract class SpiritToolEntity extends Entity {
 		nbt.putInt("miningProgress", miningTicks);
 		if (miningAt != null) nbt.put("miningAt", NbtHelper.fromBlockPos(miningAt));
 
-		if (!getItemStack().isEmpty()) nbt.put("itemStack", getItemStack().getNbt());
+		if (!getSummonStack().isEmpty()) nbt.put("itemStack", getSummonStack().getNbt());
 	}
 
 	@Override

@@ -10,6 +10,7 @@ import net.minecraft.entity.LivingEntity;
 import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.item.ItemStack;
 import net.minecraft.item.MiningToolItem;
+import net.minecraft.nbt.NbtHelper;
 import net.minecraft.tag.TagKey;
 import net.minecraft.util.ActionResult;
 import net.minecraft.util.Hand;
@@ -22,6 +23,7 @@ import net.minecraft.world.World;
 import java.util.HashSet;
 import java.util.Optional;
 import java.util.Set;
+import java.util.UUID;
 
 public abstract class SpiritToolItem<ToolEntityType extends SpiritToolEntity> extends MiningToolItem {
 	protected static final double SEARCH_BLOCK_RANGE = 5;
@@ -80,11 +82,13 @@ public abstract class SpiritToolItem<ToolEntityType extends SpiritToolEntity> ex
 		return findSummonedEntity(itemStack, world, holder).isPresent();
 	}
 
-	protected Optional<ToolEntityType> findSummonedEntity(ItemStack itemStack, World world, Entity holder) {
+	protected Optional<ToolEntityType> findSummonedEntity(ItemStack stack, World world, Entity holder) {
+		if (!stack.hasNbt() || !stack.getNbt().contains("summonedTool")) return Optional.empty();
+
+		UUID toolUuid = stack.getNbt().getUuid("summonedTool");
 		double expandBy = Math.sqrt(Math.pow(SpiritToolEntity.SUMMON_RANGE, 2) * 2);
 		return world.getEntitiesByType(getToolEntityType(), holder.getBoundingBox().expand(expandBy),
-				spiritTool -> holder.getUuid().equals(spiritTool.getOwnerUUID()) && ItemStack.areEqual(
-						spiritTool.getItemStack(), itemStack)
+				spiritTool -> spiritTool.getUuid().equals(toolUuid)
 		).stream().findAny();
 	}
 
@@ -111,16 +115,16 @@ public abstract class SpiritToolItem<ToolEntityType extends SpiritToolEntity> ex
 		Vec3d spawnAt = Vec3d.of(state.getCollisionShape(world, hitPos).isEmpty() ? hitPos : hitPos.offset(hitSide));
 
 		ToolEntityType toolEntity = spawnToolEntity(world, spawnAt, player, itemStack);
+		itemStack.setSubNbt("summonedTool", NbtHelper.fromUuid(toolEntity.getUuid()));
+
 		int ticksUntilDespawn = toolEntity.getTicksUntilDespawn();
 
 		Set<BlockPos> scheduledPositions = toolEntity.scheduleToMine(state.getBlock(), miningPositions);
-
 		int scheduledBlockCount = scheduledPositions.size();
 		// 1 tick is added for the time it takes the tool to find a new target block after finishing mining
 		int estimatedTicksToBreak = toolEntity.calcTicksToBreak(state, hitPos) + 1;
 		int estimatedBlocksBreakable = ticksUntilDespawn / estimatedTicksToBreak;
 		int damageAmount = Math.min(scheduledBlockCount, estimatedBlocksBreakable);
-		// FIXME: This changes the itemstack to be unequal for the spirit tool renderer (but not serverside?)
 		itemStack.damage(damageAmount, player, holder -> holder.sendToolBreakStatus(Hand.MAIN_HAND));
 	}
 
@@ -130,7 +134,7 @@ public abstract class SpiritToolItem<ToolEntityType extends SpiritToolEntity> ex
 		ToolEntityType toolEntity = getToolEntityType().create(world);
 		toolEntity.setPosition(spawnAt);
 		toolEntity.setOwner(owner);
-		toolEntity.setItemStack(stack);
+		toolEntity.setSummonStack(stack);
 
 		world.spawnEntity(toolEntity);
 
