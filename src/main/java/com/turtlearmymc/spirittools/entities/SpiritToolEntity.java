@@ -179,7 +179,7 @@ public abstract class SpiritToolEntity extends Entity {
 				});
 	}
 
-	protected void tryReturnToOwner() {
+	public void tryReturnToOwner() {
 		tryGiveItemsToOwner();
 		tryGiveXpToOwner();
 		discard();

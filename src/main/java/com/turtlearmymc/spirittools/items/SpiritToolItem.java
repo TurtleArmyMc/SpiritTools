@@ -9,11 +9,11 @@ import net.minecraft.entity.EntityType;
 import net.minecraft.entity.LivingEntity;
 import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.item.ItemStack;
-import net.minecraft.item.ItemUsageContext;
 import net.minecraft.item.MiningToolItem;
-import net.minecraft.server.world.ServerWorld;
 import net.minecraft.tag.TagKey;
 import net.minecraft.util.ActionResult;
+import net.minecraft.util.Hand;
+import net.minecraft.util.TypedActionResult;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Direction;
 import net.minecraft.util.math.Vec3d;
@@ -47,16 +47,31 @@ public abstract class SpiritToolItem<ToolEntityType extends SpiritToolEntity> ex
 		return ((SpiritToolItem<?>) itemStack.getItem()).isEntitySummoned(itemStack, clientWorld, holder) ? 1 : 0;
 	}
 
+	public static ActionResult attackBlockHandler(
+			PlayerEntity player, World world, Hand hand, BlockPos hitPos, Direction hitSide
+	) {
+		if (!world.isClient() && player.getMainHandStack().getItem() instanceof SpiritToolItem<?> spiritToolItem) {
+			spiritToolItem.onSpiritToolSwing(player.getMainHandStack(), world, player, hitPos, hitSide);
+		}
+		return ActionResult.PASS;
+	}
+
+	// Spirit tools should not be able to break blocks of their tool type
+	@Override
+	public boolean canMine(BlockState state, World world, BlockPos pos, PlayerEntity miner) {
+		return !super.isSuitableFor(state);
+	}
+
 	// Spirit tools should not work as regular tools
 	@Override
 	public boolean isSuitableFor(BlockState state) {
 		return false;
 	}
 
-	// Spirit tools should not work as regular tools
+	// Spirit tools should not be able to break blocks of their tool type
 	@Override
 	public float getMiningSpeedMultiplier(ItemStack stack, BlockState state) {
-		return 1;
+		return super.isSuitableFor(state) ? 0 : 1;
 	}
 
 	protected abstract EntityType<ToolEntityType> getToolEntityType();
@@ -74,27 +89,26 @@ public abstract class SpiritToolItem<ToolEntityType extends SpiritToolEntity> ex
 	}
 
 	@Override
-	public ActionResult useOnBlock(ItemUsageContext context) {
-		PlayerEntity player = context.getPlayer();
-		if (player == null) return ActionResult.FAIL;
-
-		World world = context.getWorld();
-		BlockPos hitPos = context.getBlockPos();
-		BlockState state = world.getBlockState(hitPos);
-		ItemStack itemStack = context.getStack();
-
-		if (!(world instanceof ServerWorld)) {
-			return spiritToolSuitableFor(state) && !isEntitySummoned(itemStack, world, player) ? ActionResult.SUCCESS :
-					ActionResult.FAIL;
+	public TypedActionResult<ItemStack> use(World world, PlayerEntity holder, Hand hand) {
+		ItemStack stack = holder.getStackInHand(hand);
+		if (world.isClient()) {
+			return isEntitySummoned(stack, world, holder) ? TypedActionResult.success(stack) :
+					TypedActionResult.fail(stack);
 		}
+		boolean recalled = tryRecallToolEntity(stack, world, holder);
+		return recalled ? TypedActionResult.success(stack) : TypedActionResult.fail(stack);
+	}
 
-		if (isEntitySummoned(itemStack, world, player)) return ActionResult.FAIL;
+	public void onSpiritToolSwing(
+			ItemStack itemStack, World world, PlayerEntity player, BlockPos hitPos, Direction hitSide
+	) {
+		if (isEntitySummoned(itemStack, world, player)) return;
 
 		Set<BlockPos> miningPositions = findBlocksToMine(world, hitPos);
-		if (miningPositions == null) return ActionResult.FAIL;
+		if (miningPositions == null) return;
 
-		Direction direction = context.getSide();
-		Vec3d spawnAt = Vec3d.of(state.getCollisionShape(world, hitPos).isEmpty() ? hitPos : hitPos.offset(direction));
+		BlockState state = world.getBlockState(hitPos);
+		Vec3d spawnAt = Vec3d.of(state.getCollisionShape(world, hitPos).isEmpty() ? hitPos : hitPos.offset(hitSide));
 
 		ToolEntityType toolEntity = spawnToolEntity(world, spawnAt, player, itemStack);
 		int ticksUntilDespawn = toolEntity.getTicksUntilDespawn();
@@ -106,12 +120,11 @@ public abstract class SpiritToolItem<ToolEntityType extends SpiritToolEntity> ex
 		int estimatedTicksToBreak = toolEntity.calcTicksToBreak(state, hitPos) + 1;
 		int estimatedBlocksBreakable = ticksUntilDespawn / estimatedTicksToBreak;
 		int damageAmount = Math.min(scheduledBlockCount, estimatedBlocksBreakable);
-		itemStack.damage(damageAmount, player, holder -> holder.sendToolBreakStatus(context.getHand()));
-
-		return ActionResult.SUCCESS;
+		// FIXME: This changes the itemstack to be unequal for the spirit tool renderer (but not serverside?)
+		itemStack.damage(damageAmount, player, holder -> holder.sendToolBreakStatus(Hand.MAIN_HAND));
 	}
 
-	public ToolEntityType spawnToolEntity(
+	protected ToolEntityType spawnToolEntity(
 			World world, Vec3d spawnAt, PlayerEntity owner, ItemStack stack
 	) {
 		ToolEntityType toolEntity = getToolEntityType().create(world);
@@ -122,6 +135,12 @@ public abstract class SpiritToolItem<ToolEntityType extends SpiritToolEntity> ex
 		world.spawnEntity(toolEntity);
 
 		return toolEntity;
+	}
+
+	protected boolean tryRecallToolEntity(ItemStack stack, World world, PlayerEntity holder) {
+		Optional<ToolEntityType> toolEntity = findSummonedEntity(stack, world, holder);
+		toolEntity.ifPresent(ToolEntityType::tryReturnToOwner);
+		return toolEntity.isPresent();
 	}
 
 	public float spiritToolMiningSpeed() {
