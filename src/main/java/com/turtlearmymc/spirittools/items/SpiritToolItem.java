@@ -104,28 +104,31 @@ public abstract class SpiritToolItem<ToolEntityType extends SpiritToolEntity> ex
 	}
 
 	public void onSpiritToolSwing(
-			ItemStack itemStack, World world, PlayerEntity player, BlockPos hitPos, Direction hitSide
+			ItemStack stack, World world, PlayerEntity holder, BlockPos hitPos, Direction hitSide
 	) {
-		if (isEntitySummoned(itemStack, world, player)) return;
-
+		// FIXME: This should be done after tool is found/spawned
 		Set<BlockPos> miningPositions = findBlocksToMine(world, hitPos);
 		if (miningPositions == null) return;
 
 		BlockState state = world.getBlockState(hitPos);
-		Vec3d spawnAt = Vec3d.of(state.getCollisionShape(world, hitPos).isEmpty() ? hitPos : hitPos.offset(hitSide));
 
-		ToolEntityType toolEntity = spawnToolEntity(world, spawnAt, player, itemStack);
-		itemStack.setSubNbt("summonedTool", NbtHelper.fromUuid(toolEntity.getUuid()));
-
-		int ticksUntilDespawn = toolEntity.getTicksUntilDespawn();
-
+		ToolEntityType toolEntity;
+		int previousEstimatedBreakableBlocks = 0;
+		Optional<ToolEntityType> foundEntity = findSummonedEntity(stack, world, holder);
+		if (foundEntity.isPresent()) {
+			toolEntity = foundEntity.get();
+			// TODO: Allow multiple materials to be scheduled simultaneously
+			if (toolEntity.getMineMaterial() != state.getBlock()) return;
+			previousEstimatedBreakableBlocks = toolEntity.estimateBreakableScheduledBlocks(hitPos);
+			toolEntity.resetDespawnTimer();
+		} else {
+			Vec3d spawnAt =
+					Vec3d.of(state.getCollisionShape(world, hitPos).isEmpty() ? hitPos : hitPos.offset(hitSide));
+			toolEntity = spawnToolEntity(world, spawnAt, holder, stack);
+		}
 		Set<BlockPos> scheduledPositions = toolEntity.scheduleToMine(state.getBlock(), miningPositions);
-		int scheduledBlockCount = scheduledPositions.size();
-		// 1 tick is added for the time it takes the tool to find a new target block after finishing mining
-		int estimatedTicksToBreak = toolEntity.calcTicksToBreak(state, hitPos) + 1;
-		int estimatedBlocksBreakable = ticksUntilDespawn / estimatedTicksToBreak;
-		int damageAmount = Math.min(scheduledBlockCount, estimatedBlocksBreakable);
-		itemStack.damage(damageAmount, player, holder -> holder.sendToolBreakStatus(Hand.MAIN_HAND));
+		int damageAmount = toolEntity.estimateBreakableScheduledBlocks(hitPos) - previousEstimatedBreakableBlocks;
+		stack.damage(damageAmount, holder, p -> p.sendToolBreakStatus(Hand.MAIN_HAND));
 	}
 
 	protected ToolEntityType spawnToolEntity(
@@ -137,6 +140,8 @@ public abstract class SpiritToolItem<ToolEntityType extends SpiritToolEntity> ex
 		toolEntity.setSummonStack(stack);
 
 		world.spawnEntity(toolEntity);
+
+		stack.setSubNbt("summonedTool", NbtHelper.fromUuid(toolEntity.getUuid()));
 
 		return toolEntity;
 	}

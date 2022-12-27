@@ -91,17 +91,45 @@ public abstract class SpiritToolEntity extends Entity {
 		this.ownerUuid = ownerUuid;
 	}
 
+	public Block getMineMaterial() {
+		return mineMaterial;
+	}
+
+	public void resetDespawnTimer() {
+		toolAge = 0;
+	}
+
+	protected int estimateBlocksBreakableWithinTime(BlockPos pos) {
+		int estimatedTicksToBreak = calcTicksToBreak(mineMaterial.getDefaultState(), pos);
+		int remainingTicks = getTicksUntilDespawn() + miningTicks - estimatedTicksToBreak;
+		--remainingTicks; // 1 tick is removed because the tool is aged before mining
+		if (miningAt == null) --remainingTicks; // 1 tick is removed for the time it's going to take to find the next block
+		int blocks = 0;
+		// 1 tick is removed at the end of each loop for the time it takes the tool to find the next block
+		for (; remainingTicks > 0; remainingTicks -= estimatedTicksToBreak + 1) {
+			blocks++;
+		}
+		return blocks;
+	}
+
+	public int estimateBreakableScheduledBlocks(BlockPos pos) {
+		return Math.min(
+				estimateBlocksBreakableWithinTime(pos),
+				(int) scheduledMiningPositions.stream().filter(this::isPosOfMineMaterial).count()
+		);
+	}
+
 	/**
 	 * @return scheduled mining positions
 	 */
 	public Set<BlockPos> scheduleToMine(Block mineMaterial, Set<BlockPos> miningPositions) {
-		Set<BlockPos> scheduled = new HashSet<>(miningPositions);
-		scheduled.removeAll(scheduledMiningPositions);
+		Set<BlockPos> newlyScheduled = new HashSet<>(miningPositions);
+		newlyScheduled.removeAll(scheduledMiningPositions);
 
 		this.mineMaterial = mineMaterial;
 		scheduledMiningPositions.addAll(miningPositions);
 
-		return scheduled;
+		return newlyScheduled;
 	}
 
 	@Override
@@ -157,10 +185,12 @@ public abstract class SpiritToolEntity extends Entity {
 		addDropsToInventory(miningAt, state);
 		state.onStacksDropped((ServerWorld) world, miningAt, getSummonStack());
 		collectXp(miningAt);
-
-		world.setBlockBreakingInfo(getId(), miningAt, -1);
 		world.breakBlock(miningAt, false, this);
+		resetBlockBreakProgress();
+	}
 
+	protected void resetBlockBreakProgress() {
+		world.setBlockBreakingInfo(getId(), miningAt, -1);
 		miningAt = null;
 		miningTicks = 0;
 		prevBreakStage = 0;
@@ -282,13 +312,17 @@ public abstract class SpiritToolEntity extends Entity {
 		super.remove(removalReason);
 	}
 
+	protected boolean isPosOfMineMaterial(BlockPos pos) {
+		return mineMaterial.equals(world.getBlockState(pos).getBlock());
+	}
+
 	/**
 	 * @return whether a block was found
 	 */
 	protected boolean findNextMiningBlock() {
 		Optional<BlockPos> candidate = scheduledMiningPositions.stream()
 				.sorted((a, b) -> (int) Math.signum(squaredDistanceTo(Vec3d.of(a)) - squaredDistanceTo(Vec3d.of(b))))
-				.filter(pos -> mineMaterial.equals(world.getBlockState(pos).getBlock())).findFirst();
+				.filter(this::isPosOfMineMaterial).findFirst();
 		if (candidate.isEmpty()) return false;
 		miningAt = candidate.get();
 		return true;
