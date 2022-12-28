@@ -12,7 +12,7 @@ import net.minecraft.client.util.math.MatrixStack;
 import net.minecraft.item.ItemStack;
 import net.minecraft.item.Items;
 import net.minecraft.util.Identifier;
-import net.minecraft.util.math.Vec3f;
+import net.minecraft.util.math.RotationAxis;
 
 public class SpiritToolRenderer extends EntityRenderer<SpiritToolEntity> {
 	ItemStack item = new ItemStack(Items.DIAMOND_PICKAXE);
@@ -32,7 +32,7 @@ public class SpiritToolRenderer extends EntityRenderer<SpiritToolEntity> {
 			VertexConsumerProvider vertexConsumers, int light
 	) {
 		matrices.push();
-		matrices.multiply(Vec3f.POSITIVE_Y.getDegreesQuaternion(-entity.getYaw() + 90));
+		matrices.multiply(RotationAxis.POSITIVE_Y.rotationDegrees(-entity.getYaw() + 90));
 		matrices.translate(0, 0.5, 0);
 		MinecraftClient.getInstance().getItemRenderer()
 				.renderItem(item, ModelTransformation.Mode.FIXED, light, OverlayTexture.DEFAULT_UV, matrices,

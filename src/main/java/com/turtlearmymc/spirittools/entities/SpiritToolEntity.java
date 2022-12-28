@@ -1,7 +1,6 @@
 package com.turtlearmymc.spirittools.entities;
 
 import com.turtlearmymc.spirittools.items.SpiritToolItem;
-import com.turtlearmymc.spirittools.network.S2CSummonSpiritToolPacket;
 import net.minecraft.block.Block;
 import net.minecraft.block.BlockState;
 import net.minecraft.block.entity.BlockEntity;
@@ -17,16 +16,15 @@ import net.minecraft.nbt.NbtCompound;
 import net.minecraft.nbt.NbtElement;
 import net.minecraft.nbt.NbtHelper;
 import net.minecraft.nbt.NbtList;
-import net.minecraft.network.Packet;
+import net.minecraft.registry.Registries;
+import net.minecraft.registry.tag.FluidTags;
 import net.minecraft.server.world.ServerWorld;
-import net.minecraft.tag.FluidTags;
 import net.minecraft.util.Identifier;
 import net.minecraft.util.ItemScatterer;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Box;
 import net.minecraft.util.math.MathHelper;
 import net.minecraft.util.math.Vec3d;
-import net.minecraft.util.registry.Registry;
 import net.minecraft.world.World;
 
 import java.util.*;
@@ -183,7 +181,7 @@ public abstract class SpiritToolEntity extends Entity {
 
 	protected void finishBreakingBlock(BlockState state) {
 		addDropsToInventory(miningAt, state);
-		state.onStacksDropped((ServerWorld) world, miningAt, getSummonStack());
+		state.onStacksDropped((ServerWorld) world, miningAt, getSummonStack(), true);
 		collectXp(miningAt);
 		world.breakBlock(miningAt, false, this);
 		resetBlockBreakProgress();
@@ -348,7 +346,7 @@ public abstract class SpiritToolEntity extends Entity {
 						.map(NbtHelper::toBlockPos).toList());
 
 		if (nbt.contains("miningMaterial"))
-			mineMaterial = Registry.BLOCK.get(new Identifier(nbt.getString("miningMaterial")));
+			mineMaterial = Registries.BLOCK.get(new Identifier(nbt.getString("miningMaterial")));
 		if (nbt.contains("miningProgress")) miningTicks = nbt.getInt("miningProgress");
 		if (nbt.contains("miningAt")) miningAt = NbtHelper.toBlockPos(nbt.getCompound("miningAt"));
 
@@ -369,16 +367,11 @@ public abstract class SpiritToolEntity extends Entity {
 				.collect(Collectors.toCollection(NbtList::new)));
 
 
-		nbt.putString("miningMaterial", Registry.BLOCK.getId(mineMaterial).toString());
+		nbt.putString("miningMaterial", Registries.BLOCK.getId(mineMaterial).toString());
 		nbt.putInt("miningProgress", miningTicks);
 		if (miningAt != null) nbt.put("miningAt", NbtHelper.fromBlockPos(miningAt));
 
 		if (!getSummonStack().isEmpty()) nbt.put("itemStack", getSummonStack().getNbt());
-	}
-
-	@Override
-	public Packet<?> createSpawnPacket() {
-		return S2CSummonSpiritToolPacket.createPacket(this);
 	}
 
 	protected void lookAtEntity(Entity targetEntity) {

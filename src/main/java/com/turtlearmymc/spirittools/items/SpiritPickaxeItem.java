@@ -3,7 +3,7 @@ package com.turtlearmymc.spirittools.items;
 import com.turtlearmymc.spirittools.SpiritTools;
 import com.turtlearmymc.spirittools.entities.SpiritPickaxeEntity;
 import net.minecraft.entity.EntityType;
-import net.minecraft.tag.BlockTags;
+import net.minecraft.registry.tag.BlockTags;
 
 public class SpiritPickaxeItem extends SpiritToolItem<SpiritPickaxeEntity> {
 	public static final String ITEM_ID = "spirit_pickaxe";
