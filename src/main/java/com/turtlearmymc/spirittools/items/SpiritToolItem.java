@@ -103,6 +103,7 @@ public abstract class SpiritToolItem<ToolEntityType extends SpiritToolEntity> ex
 		return recalled ? TypedActionResult.success(stack) : TypedActionResult.fail(stack);
 	}
 
+	// FIXME: Only runs on first tick of swing. Continuing to swing does not reset despawn timer
 	public void onSpiritToolSwing(
 			ItemStack stack, World world, PlayerEntity holder, BlockPos hitPos, Direction hitSide
 	) {
@@ -124,7 +125,7 @@ public abstract class SpiritToolItem<ToolEntityType extends SpiritToolEntity> ex
 		} else {
 			Vec3d spawnAt =
 					Vec3d.of(state.getCollisionShape(world, hitPos).isEmpty() ? hitPos : hitPos.offset(hitSide));
-			toolEntity = spawnToolEntity(world, spawnAt, holder, stack);
+			toolEntity = spawnToolEntity(world, spawnAt, hitPos, holder, stack);
 		}
 		Set<BlockPos> scheduledPositions = toolEntity.scheduleToMine(state.getBlock(), miningPositions);
 		int damageAmount = toolEntity.estimateBreakableScheduledBlocks(hitPos) - previousEstimatedBreakableBlocks;
@@ -132,12 +133,13 @@ public abstract class SpiritToolItem<ToolEntityType extends SpiritToolEntity> ex
 	}
 
 	protected ToolEntityType spawnToolEntity(
-			World world, Vec3d spawnAt, PlayerEntity owner, ItemStack stack
+			World world, Vec3d spawnAt, BlockPos startMiningAt, PlayerEntity owner, ItemStack stack
 	) {
 		ToolEntityType toolEntity = getToolEntityType().create(world);
 		toolEntity.setPosition(spawnAt);
 		toolEntity.setOwner(owner);
 		toolEntity.setSummonStack(stack);
+		toolEntity.lookAt(startMiningAt);
 
 		world.spawnEntity(toolEntity);
 

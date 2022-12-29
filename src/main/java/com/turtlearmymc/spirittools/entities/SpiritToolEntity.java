@@ -374,7 +374,7 @@ public abstract class SpiritToolEntity extends Entity {
 		if (!getSummonStack().isEmpty()) nbt.put("itemStack", getSummonStack().getNbt());
 	}
 
-	protected void lookAtEntity(Entity targetEntity) {
+	public void lookAtEntity(Entity targetEntity) {
 		double y;
 		if (targetEntity instanceof LivingEntity livingEntity) {
 			y = livingEntity.getEyeY();
@@ -384,15 +384,15 @@ public abstract class SpiritToolEntity extends Entity {
 		lookAt(targetEntity.getX(), y, targetEntity.getZ());
 	}
 
-	protected void lookAt(BlockPos pos) {
+	public void lookAt(BlockPos pos) {
 		lookAt(pos.getX() + 0.5, pos.getY() + 0.5, pos.getZ() + 0.5);
 	}
 
-	protected void lookAt(Vec3d pos) {
+	public void lookAt(Vec3d pos) {
 		lookAt(pos.getX(), pos.getY(), pos.getZ());
 	}
 
-	protected void lookAt(double x, double y, double z) {
+	public void lookAt(double x, double y, double z) {
 		double xDelta = x - getX();
 		double yDelta = y - getEyeY();
 		double zDelta = z - getZ();

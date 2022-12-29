@@ -12,6 +12,7 @@ import net.minecraft.client.util.math.MatrixStack;
 import net.minecraft.item.ItemStack;
 import net.minecraft.item.Items;
 import net.minecraft.util.Identifier;
+import net.minecraft.util.math.MathHelper;
 import net.minecraft.util.math.RotationAxis;
 
 public class SpiritToolRenderer extends EntityRenderer<SpiritToolEntity> {
@@ -32,12 +33,28 @@ public class SpiritToolRenderer extends EntityRenderer<SpiritToolEntity> {
 			VertexConsumerProvider vertexConsumers, int light
 	) {
 		matrices.push();
-		matrices.multiply(RotationAxis.POSITIVE_Y.rotationDegrees(-entity.getYaw() + 90));
+
+		setAngles(entity, tickDelta, matrices);
 		matrices.translate(0, 0.5, 0);
 		MinecraftClient.getInstance().getItemRenderer()
 				.renderItem(item, ModelTransformation.Mode.FIXED, light, OverlayTexture.DEFAULT_UV, matrices,
 						vertexConsumers, entity.getId()
 				);
+
 		matrices.pop();
+	}
+
+	private static void setAngles(SpiritToolEntity entity, float tickDelta, MatrixStack matrices) {
+		final float swingRate = ((float) Math.PI * 2) / 4;
+		final float swingAmplitude = 0.6f;
+		final float degToRad = ((float) Math.PI / 180);
+		float swingProgress = entity.age + tickDelta;
+		float shake = MathHelper.sin(swingProgress * swingRate) * swingAmplitude;
+		float shakeX = shake * MathHelper.cos(degToRad * entity.getYaw());
+		float shakeZ = shake * MathHelper.sin(degToRad * entity.getYaw());
+		matrices.multiply(RotationAxis.POSITIVE_X.rotation(shakeX));
+		matrices.multiply(RotationAxis.POSITIVE_Z.rotation(shakeZ));
+
+		matrices.multiply(RotationAxis.POSITIVE_Y.rotationDegrees(-entity.getYaw() + 90));
 	}
 }
