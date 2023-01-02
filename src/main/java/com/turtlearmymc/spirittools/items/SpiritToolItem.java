@@ -12,6 +12,7 @@ import net.minecraft.item.ItemStack;
 import net.minecraft.item.MiningToolItem;
 import net.minecraft.nbt.NbtHelper;
 import net.minecraft.registry.tag.TagKey;
+import net.minecraft.sound.SoundEvents;
 import net.minecraft.util.ActionResult;
 import net.minecraft.util.Hand;
 import net.minecraft.util.TypedActionResult;
@@ -142,6 +143,7 @@ public abstract class SpiritToolItem<ToolEntityType extends SpiritToolEntity> ex
 		toolEntity.lookAt(startMiningAt);
 
 		world.spawnEntity(toolEntity);
+		toolEntity.playSound(SoundEvents.ENTITY_ALLAY_ITEM_GIVEN, 2, 1);
 
 		stack.setSubNbt("summonedTool", NbtHelper.fromUuid(toolEntity.getUuid()));
 

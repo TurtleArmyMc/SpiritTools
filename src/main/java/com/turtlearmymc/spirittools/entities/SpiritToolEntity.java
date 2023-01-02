@@ -19,6 +19,7 @@ import net.minecraft.nbt.NbtList;
 import net.minecraft.registry.Registries;
 import net.minecraft.registry.tag.FluidTags;
 import net.minecraft.server.world.ServerWorld;
+import net.minecraft.sound.SoundEvents;
 import net.minecraft.util.Identifier;
 import net.minecraft.util.ItemScatterer;
 import net.minecraft.util.math.BlockPos;
@@ -154,6 +155,7 @@ public abstract class SpiritToolEntity extends Entity {
 
 		if (!holderWithinRange()) {
 			tryReturnToOwner();
+			playSound(SoundEvents.ENTITY_ITEM_BREAK, 0.8f, 0.8f + world.random.nextFloat() * 0.4f);
 			return;
 		}
 
@@ -203,6 +205,8 @@ public abstract class SpiritToolEntity extends Entity {
 	}
 
 	public void tryReturnToOwner() {
+		if (getOwner() != null) setPosition(getOwner().getPos());
+		playSound(SoundEvents.ENTITY_ALLAY_ITEM_TAKEN,2, 1);
 		tryGiveItemsToOwner();
 		tryGiveXpToOwner();
 		tryClearItemNbt();
